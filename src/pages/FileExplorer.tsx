@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useFileStore } from '../store/useFileStore';
 import {
   Menu,
@@ -23,6 +23,7 @@ import {
   Download,
   HardDrive,
   CheckSquare,
+  RefreshCw,
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileUtils';
@@ -33,6 +34,7 @@ const FileExplorer = () => {
     selectedFiles,
     viewMode,
     isMultiSelect,
+    isLoading,
     clipboard,
     setCurrentPath,
     navigateToFolder,
@@ -47,10 +49,16 @@ const FileExplorer = () => {
     cutFiles,
     pasteFiles,
     getSortedFiles,
+    loadFiles,
+    refreshFiles,
   } = useFileStore();
   
   const [showSidebar, setShowSidebar] = useState(false);
   const sortedFiles = getSortedFiles();
+
+  useEffect(() => {
+    loadFiles(currentPath);
+  }, []);
 
   const getFileIcon = (file: FileItem) => {
     if (file.type === 'folder') {
@@ -163,6 +171,13 @@ const FileExplorer = () => {
                 <Search size={24} />
               </button>
               <button
+                onClick={refreshFiles}
+                className="p-2 hover:bg-gray-100 rounded-full"
+                title="刷新"
+              >
+                <RefreshCw size={24} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+              <button
                 onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
                 className="p-2 hover:bg-gray-100 rounded-full"
               >
@@ -252,7 +267,16 @@ const FileExplorer = () => {
 
       {/* 文件列表 */}
       <div className="flex-1 overflow-y-auto p-2">
-        {viewMode === 'grid' ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+          </div>
+        ) : sortedFiles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <Folder size={64} className="mb-4 opacity-50" />
+            <p>该目录为空</p>
+          </div>
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-4 gap-2">
             {sortedFiles.map((file) => {
               const isSelected = selectedFiles.has(file.id);

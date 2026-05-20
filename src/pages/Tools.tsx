@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import {
   Trash2,
   HardDrive,
@@ -13,9 +14,11 @@ import {
 } from 'lucide-react';
 
 const Tools = () => {
+  const navigate = useNavigate();
+
   const tools = [
-    { id: 1, icon: Trash2, label: '垃圾清理', color: 'text-red-500', desc: '清理缓存和无用文件' },
-    { id: 2, icon: HardDrive, label: '存储分析', color: 'text-blue-500', desc: '分析磁盘空间使用' },
+    { id: 1, icon: Trash2, label: '垃圾清理', color: 'text-red-500', desc: '清理缓存和无用文件', action: () => navigate('/categories') },
+    { id: 2, icon: HardDrive, label: '存储分析', color: 'text-blue-500', desc: '分析磁盘空间使用', action: () => navigate('/categories') },
     { id: 3, icon: Shield, label: '安全扫描', color: 'text-green-500', desc: '扫描恶意文件' },
     { id: 4, icon: Wifi, label: '网络分析', color: 'text-purple-500', desc: '查看网络连接' },
     { id: 5, icon: Scan, label: '文件搜索', color: 'text-orange-500', desc: '快速搜索文件' },
@@ -42,12 +45,18 @@ const Tools = () => {
         <div className="mb-6">
           <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">快速操作</h2>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gradient-to-br from-red-400 to-red-500 rounded-xl p-4 text-white cursor-pointer hover:shadow-lg transition-all">
+            <div 
+              className="bg-gradient-to-br from-red-400 to-red-500 rounded-xl p-4 text-white cursor-pointer hover:shadow-lg transition-all"
+              onClick={() => navigate('/categories')}
+            >
               <Trash2 size={32} className="mb-2" />
               <p className="font-semibold">垃圾清理</p>
               <p className="text-xs text-red-100 mt-1">释放存储空间</p>
             </div>
-            <div className="bg-gradient-to-br from-blue-400 to-blue-500 rounded-xl p-4 text-white cursor-pointer hover:shadow-lg transition-all">
+            <div 
+              className="bg-gradient-to-br from-blue-400 to-blue-500 rounded-xl p-4 text-white cursor-pointer hover:shadow-lg transition-all"
+              onClick={() => navigate('/categories')}
+            >
               <HardDrive size={32} className="mb-2" />
               <p className="font-semibold">存储分析</p>
               <p className="text-xs text-blue-100 mt-1">分析空间使用</p>
@@ -65,6 +74,7 @@ const Tools = () => {
                 <div
                   key={tool.id}
                   className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer"
+                  onClick={tool.action}
                 >
                   <div className={`p-3 rounded-xl ${tool.color.replace('text-', 'bg-').replace('500', '100')}`}>
                     <Icon size={28} className={tool.color} />

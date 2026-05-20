@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { FileItem, CacheItem, StorageStats, LargeFile } from '../types';
 import { generateMockFiles } from '../utils/fileUtils';
+import { getFilesInDirectory, deleteFileOrFolder } from '../services/filesystem';
 
 interface FileStore {
   currentPath: string;
@@ -12,6 +13,7 @@ interface FileStore {
   viewMode: 'grid' | 'list';
   isMultiSelect: boolean;
   isScanning: boolean;
+  isLoading: boolean;
   sortBy: 'name' | 'size' | 'date';
   sortOrder: 'asc' | 'desc';
   clipboard: {
@@ -40,6 +42,8 @@ interface FileStore {
   scanCache: () => void;
   cleanCache: () => void;
   deleteFile: (id: string) => void;
+  loadFiles: (path: string) => void;
+  refreshFiles: () => void;
 }
 
 export const useFileStore = create<FileStore>((set, get) => ({
@@ -72,18 +76,24 @@ export const useFileStore = create<FileStore>((set, get) => ({
   viewMode: 'grid',
   isMultiSelect: false,
   isScanning: false,
+  isLoading: false,
   sortBy: 'name',
   sortOrder: 'asc',
   clipboard: { type: null, files: [] },
 
-  setCurrentPath: (path) => set({ currentPath: path, selectedFiles: new Set(), isMultiSelect: false }),
+  setCurrentPath: (path) => {
+    set({ currentPath: path, selectedFiles: new Set(), isMultiSelect: false });
+    get().loadFiles(path);
+  },
 
   navigateToFolder: (folder) => {
+    const newPath = folder.path;
     set({ 
-      currentPath: folder.path, 
+      currentPath: newPath, 
       selectedFiles: new Set(), 
       isMultiSelect: false 
     });
+    get().loadFiles(newPath);
   },
 
   goBack: () => {
@@ -93,6 +103,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
       parts.pop();
       const newPath = parts.length === 1 ? '/' : parts.join('/');
       set({ currentPath: newPath, selectedFiles: new Set(), isMultiSelect: false });
+      get().loadFiles(newPath);
     }
   },
 
@@ -124,7 +135,14 @@ export const useFileStore = create<FileStore>((set, get) => ({
     selectedFiles: !state.isMultiSelect ? new Set() : state.selectedFiles 
   })),
 
-  deleteSelected: () => {
+  deleteSelected: async () => {
+    const { selectedFiles, files, currentPath } = get();
+    const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
+    
+    for (const file of selectedFileItems) {
+      await deleteFileOrFolder(currentPath, file.name);
+    }
+
     set((state) => ({
       files: state.files.filter(f => !state.selectedFiles.has(f.id)),
       selectedFiles: new Set(),
@@ -160,7 +178,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
     
     if (clipboard.type === 'copy') {
       clipboard.files.forEach(file => {
-        const newFile = { ...file, id: file.id + '-copy' };
+        const newFile = { ...file, id: `${file.id}-copy-${Date.now()}` };
         newFiles.push(newFile);
       });
     } else if (clipboard.type === 'cut') {
@@ -229,5 +247,23 @@ export const useFileStore = create<FileStore>((set, get) => ({
     set((state) => ({
       files: state.files.filter(f => f.id !== id)
     }));
+  },
+
+  loadFiles: async (path: string) => {
+    set({ isLoading: true });
+    try {
+      const realFiles = await getFilesInDirectory(path);
+      set({ files: realFiles.length > 0 ? realFiles : generateMockFiles() });
+    } catch (error) {
+      console.error('Failed to load files:', error);
+      set({ files: generateMockFiles() });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  refreshFiles: () => {
+    const { currentPath } = get();
+    get().loadFiles(currentPath);
   },
 }));
