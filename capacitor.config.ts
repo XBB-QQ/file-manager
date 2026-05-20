@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: '文件管理器',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'http'
   }
 };
 
