@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { FileItem, CacheItem, StorageStats, LargeFile } from '../types';
-import { generateMockFiles } from '../utils/fileUtils';
 import { getFilesInDirectory, deleteFileOrFolder } from '../services/filesystem';
+import { requestStoragePermissions, checkStoragePermissions } from '../services/permissions';
 
 interface FileStore {
   currentPath: string;
@@ -20,6 +20,8 @@ interface FileStore {
     type: 'copy' | 'cut' | null;
     files: FileItem[];
   };
+  hasPermission: boolean;
+  permissionError: string | null;
 
   setCurrentPath: (path: string) => void;
   navigateToFolder: (folder: FileItem) => void;
@@ -44,34 +46,20 @@ interface FileStore {
   deleteFile: (id: string) => void;
   loadFiles: (path: string) => void;
   refreshFiles: () => void;
+  requestPermissions: () => Promise<boolean>;
 }
 
 export const useFileStore = create<FileStore>((set, get) => ({
   currentPath: '/',
-  files: generateMockFiles(),
-  cacheItems: [
-    { id: 'c1', appName: '微信', cacheSize: 500000000, cacheType: '聊天缓存、图片、视频', cachePath: '/Android/data/com.tencent.mm/', isSelected: true },
-    { id: 'c2', appName: '抖音', cacheSize: 300000000, cacheType: '视频缓存、缩略图', cachePath: '/Android/data/com.ss.android.ugc.aweme/', isSelected: true },
-    { id: 'c3', appName: '淘宝', cacheSize: 200000000, cacheType: '图片缓存、商品数据', cachePath: '/Android/data/com.taobao.taobao/', isSelected: false },
-    { id: 'c4', appName: '系统缓存', cacheSize: 150000000, cacheType: '系统临时文件、日志', cachePath: '/data/local/tmp/', isSelected: true },
-  ],
+  files: [],
+  cacheItems: [],
   storageStats: {
-    total: 128000000000,
-    used: 85000000000,
-    available: 43000000000,
-    breakdown: [
-      { name: '图片', value: 25000000000, color: '#FF6B6B' },
-      { name: '视频', value: 35000000000, color: '#4ECDC4' },
-      { name: '应用', value: 15000000000, color: '#45B7D1' },
-      { name: '文档', value: 5000000000, color: '#96CEB4' },
-      { name: '其他', value: 5000000000, color: '#FFEAA7' },
-    ],
+    total: 0,
+    used: 0,
+    available: 0,
+    breakdown: [],
   },
-  largeFiles: [
-    { id: 'lf1', name: 'backup_2024.zip', size: 2500000000, path: '/Download/' },
-    { id: 'lf2', name: 'movie.mp4', size: 1800000000, path: '/Movies/' },
-    { id: 'lf3', name: 'photos.tar.gz', size: 1200000000, path: '/DCIM/' },
-  ],
+  largeFiles: [],
   selectedFiles: new Set(),
   viewMode: 'grid',
   isMultiSelect: false,
@@ -80,6 +68,8 @@ export const useFileStore = create<FileStore>((set, get) => ({
   sortBy: 'name',
   sortOrder: 'asc',
   clipboard: { type: null, files: [] },
+  hasPermission: false,
+  permissionError: null,
 
   setCurrentPath: (path) => {
     set({ currentPath: path, selectedFiles: new Set(), isMultiSelect: false });
@@ -143,14 +133,11 @@ export const useFileStore = create<FileStore>((set, get) => ({
       await deleteFileOrFolder(currentPath, file.name);
     }
 
-    set((state) => ({
-      files: state.files.filter(f => !state.selectedFiles.has(f.id)),
-      selectedFiles: new Set(),
-      isMultiSelect: false
-    }));
+    await get().loadFiles(currentPath);
+    set({ selectedFiles: new Set(), isMultiSelect: false });
   },
 
-  copyFiles: () => {
+  copyFiles: async () => {
     const { selectedFiles, files } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
     set({ 
@@ -160,7 +147,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
     });
   },
 
-  cutFiles: () => {
+  cutFiles: async () => {
     const { selectedFiles, files } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
     set({ 
@@ -170,27 +157,30 @@ export const useFileStore = create<FileStore>((set, get) => ({
     });
   },
 
-  pasteFiles: () => {
-    const { clipboard, files } = get();
+  pasteFiles: async () => {
+    const { clipboard, currentPath } = get();
     if (clipboard.files.length === 0) return;
 
-    const newFiles = [...files];
+    set({ isLoading: true });
     
-    if (clipboard.type === 'copy') {
-      clipboard.files.forEach(file => {
-        const newFile = { ...file, id: `${file.id}-copy-${Date.now()}` };
-        newFiles.push(newFile);
-      });
-    } else if (clipboard.type === 'cut') {
-      const existingIds = new Set(files.map(f => f.id));
-      clipboard.files.forEach(file => {
-        if (!existingIds.has(file.id)) {
-          newFiles.push(file);
+    try {
+      for (const file of clipboard.files) {
+        const destPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+        
+        if (clipboard.type === 'copy') {
+          await copyFile(file.path, destPath);
+        } else if (clipboard.type === 'cut') {
+          await moveFile(file.path, destPath);
         }
-      });
+      }
+      
+      set({ clipboard: { type: null, files: [] } });
+      await get().loadFiles(currentPath);
+    } catch (error) {
+      console.error('Error pasting files:', error);
+    } finally {
+      set({ isLoading: false });
     }
-
-    set({ files: newFiles, clipboard: { type: null, files: [] } });
   },
 
   setSortBy: (by) => set({ sortBy: by }),
@@ -250,20 +240,61 @@ export const useFileStore = create<FileStore>((set, get) => ({
   },
 
   loadFiles: async (path: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, permissionError: null });
     try {
       const realFiles = await getFilesInDirectory(path);
-      set({ files: realFiles.length > 0 ? realFiles : generateMockFiles() });
-    } catch (error) {
+      set({ 
+        files: realFiles, 
+        hasPermission: true,
+        permissionError: null,
+        isLoading: false 
+      });
+    } catch (error: any) {
       console.error('Failed to load files:', error);
-      set({ files: generateMockFiles() });
-    } finally {
-      set({ isLoading: false });
+      const errorMessage = error?.message || String(error) || '无法访问存储';
+      
+      const isPermissionError = 
+        errorMessage.toLowerCase().includes('permission') || 
+        errorMessage.toLowerCase().includes('denied') ||
+        errorMessage.toLowerCase().includes('access') ||
+        errorMessage.toLowerCase().includes('security');
+      
+      set({ 
+        files: [],
+        hasPermission: !isPermissionError,
+        permissionError: isPermissionError ? '需要存储权限才能访问文件，请点击下方按钮申请权限' : errorMessage,
+        isLoading: false 
+      });
     }
   },
 
   refreshFiles: () => {
     const { currentPath } = get();
     get().loadFiles(currentPath);
+  },
+
+  requestPermissions: async (): Promise<boolean> => {
+    try {
+      const granted = await requestStoragePermissions();
+      
+      if (granted) {
+        set({ hasPermission: true, permissionError: null });
+        get().loadFiles('/');
+        return true;
+      } else {
+        set({ 
+          hasPermission: false, 
+          permissionError: '需要存储权限才能访问文件，请在设置中授予' 
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      set({ 
+        hasPermission: false, 
+        permissionError: '权限请求失败，请在设置中手动授予' 
+      });
+      return false;
+    }
   },
 }));

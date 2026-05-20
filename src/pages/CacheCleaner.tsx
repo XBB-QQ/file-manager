@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useFileStore } from '../store/useFileStore';
-import { Trash2, Search, Smartphone, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Trash2, Smartphone, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
 import { getRealFiles } from '../services/systemInfo';
-import { Directory } from '@capacitor/filesystem';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 interface CacheItem {
   id: string;
@@ -19,6 +18,7 @@ const CacheCleaner = () => {
   const [cacheItems, setCacheItems] = useState<CacheItem[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCleaning, setIsCleaning] = useState(false);
 
   useEffect(() => {
     scanCache();
@@ -27,10 +27,10 @@ const CacheCleaner = () => {
   const scanCache = async () => {
     setIsScanning(true);
     setIsLoading(true);
-    
+
     try {
       const cacheData: CacheItem[] = [];
-      
+
       const androidDataDirs = [
         { name: '微信', path: 'Android/data/com.tencent.mm/cache', types: '聊天缓存、图片缓存' },
         { name: '抖音', path: 'Android/data/com.ss.android.ugc.aweme/cache', types: '视频缓存、缩略图' },
@@ -43,12 +43,12 @@ const CacheCleaner = () => {
       ];
 
       let totalSize = 0;
-      
+
       for (const app of androidDataDirs) {
         try {
           const files = await getRealFiles(app.path);
           const appCacheSize = files.reduce((sum, file) => sum + file.size, 0);
-          
+
           if (appCacheSize > 0) {
             cacheData.push({
               id: `cache-${app.name}`,
@@ -78,6 +78,40 @@ const CacheCleaner = () => {
     }
   };
 
+  const deleteFilesInDirectory = async (path: string): Promise<number> => {
+    let deletedSize = 0;
+    try {
+      const files = await getRealFiles(path);
+
+      for (const file of files) {
+        if (file.type === 'file') {
+          try {
+            await Filesystem.deleteFile({
+              path: `${path}/${file.name}`,
+              directory: Directory.ExternalStorage,
+            });
+            deletedSize += file.size;
+          } catch (e) {
+            console.log('Cannot delete:', file.name);
+          }
+        } else if (file.type === 'folder') {
+          deletedSize += await deleteFilesInDirectory(file.path);
+          try {
+            await Filesystem.rmdir({
+              path: file.path,
+              directory: Directory.ExternalStorage,
+            });
+          } catch (e) {
+            console.log('Cannot delete folder:', file.path);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Cannot delete from:', path);
+    }
+    return deletedSize;
+  };
+
   const toggleCacheSelection = (id: string) => {
     setCacheItems(prev => prev.map(item =>
       item.id === id ? { ...item, isSelected: !item.isSelected } : item
@@ -92,8 +126,22 @@ const CacheCleaner = () => {
     setCacheItems(prev => prev.map(item => ({ ...item, isSelected: false })));
   };
 
-  const cleanCache = () => {
-    setCacheItems(prev => prev.filter(item => !item.isSelected));
+  const cleanCache = async () => {
+    setIsCleaning(true);
+
+    try {
+      const selectedPaths = cacheItems.filter(item => item.isSelected);
+
+      for (const item of selectedPaths) {
+        await deleteFilesInDirectory(item.cachePath);
+      }
+
+      await scanCache();
+    } catch (error) {
+      console.error('Clean cache failed:', error);
+    } finally {
+      setIsCleaning(false);
+    }
   };
 
   const selectedItems = cacheItems.filter((item) => item.isSelected);
@@ -111,7 +159,7 @@ const CacheCleaner = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={scanCache}
-              disabled={isScanning}
+              disabled={isScanning || isCleaning}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
             >
               <RefreshCw size={18} className={isScanning ? 'animate-spin' : ''} />
@@ -137,11 +185,11 @@ const CacheCleaner = () => {
                 </div>
                 <button
                   onClick={cleanCache}
-                  disabled={selectedItems.length === 0}
+                  disabled={selectedItems.length === 0 || isCleaning}
                   className="flex items-center gap-2 px-6 py-3 bg-white text-blue-500 font-semibold rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 size={20} />
-                  一键清理
+                  {isCleaning ? '清理中...' : '一键清理'}
                 </button>
               </div>
             </div>

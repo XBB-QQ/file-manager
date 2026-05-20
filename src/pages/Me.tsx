@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   User,
   Settings,
@@ -10,10 +11,53 @@ import {
   Download,
   Star,
   Share2,
-  LogOut
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
+import { getRealFiles } from '../services/systemInfo';
+import { formatFileSize } from '../utils/fileUtils';
 
 const Me = () => {
+  const [stats, setStats] = useState({ files: 0, folders: 0, size: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    setIsLoading(true);
+    try {
+      let totalFiles = 0;
+      let totalFolders = 0;
+      let totalSize = 0;
+
+      const dirs = ['Pictures', 'DCIM', 'Download', 'Documents', 'Music', 'Movies'];
+
+      for (const dir of dirs) {
+        try {
+          const files = await getRealFiles(dir);
+          for (const file of files) {
+            if (file.type === 'file') {
+              totalFiles++;
+              totalSize += file.size;
+            } else {
+              totalFolders++;
+            }
+          }
+        } catch (e) {
+          console.log('Cannot scan:', dir);
+        }
+      }
+
+      setStats({ files: totalFiles, folders: totalFolders, size: totalSize });
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const menuItems = [
     { icon: Settings, label: '设置', color: 'text-blue-500' },
     { icon: Palette, label: '主题', color: 'text-purple-500' },
@@ -29,13 +73,11 @@ const Me = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* 顶部 */}
       <div className="bg-gradient-to-br from-blue-500 to-blue-600 px-4 pb-8 pt-4">
         <div className="flex items-center h-14">
           <h1 className="text-lg font-semibold text-white">我的</h1>
         </div>
-        
-        {/* 用户信息 */}
+
         <div className="flex items-center gap-4 mt-4">
           <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
             <User size={32} className="text-white" />
@@ -48,27 +90,40 @@ const Me = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* 统计卡片 */}
         <div className="px-4 -mt-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-600">存储统计</h2>
+              <button
+                onClick={loadStats}
+                className="p-1 hover:bg-gray-100 rounded-full"
+              >
+                <RefreshCw size={16} className="text-gray-400" />
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-2xl font-bold text-blue-500">128</p>
+                <p className="text-2xl font-bold text-blue-500">
+                  {isLoading ? '...' : stats.files}
+                </p>
                 <p className="text-xs text-gray-500">文件</p>
               </div>
               <div className="border-x border-gray-200">
-                <p className="text-2xl font-bold text-green-500">36</p>
+                <p className="text-2xl font-bold text-green-500">
+                  {isLoading ? '...' : stats.folders}
+                </p>
                 <p className="text-xs text-gray-500">文件夹</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-purple-500">5.2G</p>
+                <p className="text-2xl font-bold text-purple-500">
+                  {isLoading ? '...' : formatFileSize(stats.size)}
+                </p>
                 <p className="text-xs text-gray-500">总大小</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 菜单列表 */}
         <div className="mt-4">
           {menuItems.map((item, idx) => {
             const Icon = item.icon;
@@ -86,7 +141,6 @@ const Me = () => {
           })}
         </div>
 
-        {/* 退出登录 */}
         <div className="p-4">
           <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-100 hover:bg-red-50 cursor-pointer text-red-500">
             <div className="p-2 rounded-lg bg-red-100">
@@ -96,7 +150,6 @@ const Me = () => {
           </div>
         </div>
 
-        {/* 版本信息 */}
         <div className="text-center py-6 text-xs text-gray-400">
           <p>文件管理器 v1.0.0</p>
           <p className="mt-1">© 2024 All Rights Reserved</p>
