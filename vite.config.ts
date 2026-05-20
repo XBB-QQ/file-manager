@@ -5,12 +5,15 @@ import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: './',
   server: {
     host: '0.0.0.0',
     port: 5173,
   },
   build: {
     sourcemap: 'hidden',
+    outDir: 'dist',
+    emptyOutDir: true,
   },
   plugins: [
     react({

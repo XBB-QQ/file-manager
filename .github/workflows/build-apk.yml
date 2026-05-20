@@ -24,10 +24,13 @@ jobs:
       - name: Build web app
         run: npm run build
 
+      - name: Sync Capacitor
+        run: npx cap sync android
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Grant execute permission for gradlew
