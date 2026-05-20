@@ -24,6 +24,8 @@ import {
   HardDrive,
   CheckSquare,
   RefreshCw,
+  AlertCircle,
+  Shield,
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileUtils';
@@ -51,20 +53,22 @@ const FileExplorer = () => {
     getSortedFiles,
     loadFiles,
     refreshFiles,
+    permissionError,
+    hasPermission,
   } = useFileStore();
-  
+
   const [showSidebar, setShowSidebar] = useState(false);
   const sortedFiles = getSortedFiles();
 
   useEffect(() => {
-    loadFiles(currentPath);
+    loadFiles('/');
   }, []);
 
   const getFileIcon = (file: FileItem) => {
     if (file.type === 'folder') {
       return <Folder className="text-blue-500" size={viewMode === 'grid' ? 40 : 32} />;
     }
-    
+
     switch (file.category) {
       case 'image':
         return <Image className="text-green-500" size={viewMode === 'grid' ? 40 : 32} />;
@@ -267,6 +271,26 @@ const FileExplorer = () => {
 
       {/* 文件列表 */}
       <div className="flex-1 overflow-y-auto p-2">
+        {permissionError && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <Shield className="text-amber-500 flex-shrink-0 mt-0.5" size={24} />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 mb-1">需要存储权限</h3>
+                <p className="text-sm text-amber-700 mb-3">
+                  {permissionError}。请在设置中授予权限以访问文件。
+                </p>
+                <button
+                  onClick={() => loadFiles('/')}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
+                >
+                  刷新重试
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>

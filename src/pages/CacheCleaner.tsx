@@ -66,22 +66,7 @@ const CacheCleaner = () => {
       }
 
       if (cacheData.length === 0) {
-        const defaultCache = [
-          { name: '微信', size: 500000000, types: '聊天缓存、图片缓存' },
-          { name: '抖音', size: 300000000, types: '视频缓存' },
-          { name: '系统缓存', size: 150000000, types: '临时文件' },
-        ];
-        
-        for (const item of defaultCache) {
-          cacheData.push({
-            id: `cache-${item.name}`,
-            appName: item.name,
-            cacheSize: item.size,
-            cacheType: item.types,
-            cachePath: '',
-            isSelected: false
-          });
-        }
+        console.log('No cache directories found or permission denied');
       }
 
       setCacheItems(cacheData);
@@ -94,7 +79,7 @@ const CacheCleaner = () => {
   };
 
   const toggleCacheSelection = (id: string) => {
-    setCacheItems(prev => prev.map(item => 
+    setCacheItems(prev => prev.map(item =>
       item.id === id ? { ...item, isSelected: !item.isSelected } : item
     ));
   };
@@ -122,7 +107,7 @@ const CacheCleaner = () => {
             <h1 className="text-lg font-semibold">缓存清理</h1>
             <p className="text-sm text-gray-500">扫描并清理应用缓存</p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <button
               onClick={scanCache}
@@ -177,7 +162,13 @@ const CacheCleaner = () => {
             </div>
 
             <div className="space-y-4">
-              {cacheItems.map((item) => (
+              {cacheItems.length === 0 ? (
+                <div className="bg-gray-50 rounded-xl p-8 text-center">
+                  <p className="text-gray-400">暂无可清理的缓存</p>
+                  <p className="text-sm text-gray-400 mt-1">请确保已授予存储权限</p>
+                </div>
+              ) : (
+                cacheItems.map((item) => (
                 <div
                   key={item.id}
                   className={`bg-white rounded-xl p-4 shadow-sm border transition-all ${
@@ -195,7 +186,7 @@ const CacheCleaner = () => {
                     >
                       {item.isSelected && <CheckCircle2 size={16} className="text-white" />}
                     </button>
-                    
+
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Smartphone size={24} className="text-gray-400" />
@@ -211,7 +202,7 @@ const CacheCleaner = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
 
             <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
