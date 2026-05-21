@@ -18,33 +18,45 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
     console.log('Platform:', platform);
 
     // On Android, always try the native MANAGE_EXTERNAL_STORAGE request
-    // The native plugin will handle version checks internally
     if (platform === 'android') {
       console.log('Android detected, using native MANAGE_EXTERNAL_STORAGE request');
 
-      const checkResult = await StoragePermission.checkManageExternalStorage();
-      console.log('Check result:', checkResult);
+      try {
+        const checkResult = await StoragePermission.checkManageExternalStorage();
+        console.log('Check result:', JSON.stringify(checkResult));
 
-      if (checkResult.granted) {
-        console.log('MANAGE_EXTERNAL_STORAGE already granted');
+        if (checkResult && checkResult.granted === true) {
+          console.log('MANAGE_EXTERNAL_STORAGE already granted');
+          isRequesting = false;
+          return true;
+        }
+
+        console.log('Requesting MANAGE_EXTERNAL_STORAGE via native plugin');
+        const result = await StoragePermission.requestManageExternalStorage();
+        console.log('Request result:', JSON.stringify(result));
+
         isRequesting = false;
-        return true;
+        return result && result.granted === true;
+      } catch (pluginError) {
+        console.error('Native plugin call failed:', pluginError);
+        await openAppSettings();
+        isRequesting = false;
+        return false;
       }
-
-      console.log('Requesting MANAGE_EXTERNAL_STORAGE via native plugin');
-      const result = await StoragePermission.requestManageExternalStorage();
-      console.log('Request result:', result);
-
-      isRequesting = false;
-      return result.granted === true;
     }
 
     // iOS and other platforms
-    const { Filesystem } = await import('@capacitor/filesystem');
-    const result = await Filesystem.requestPermissions();
-    console.log('Filesystem permissions result:', result);
-    isRequesting = false;
-    return result.storage === 'granted';
+    try {
+      const { Filesystem } = await import('@capacitor/filesystem');
+      const result = await Filesystem.requestPermissions();
+      console.log('Filesystem permissions result:', JSON.stringify(result));
+      isRequesting = false;
+      return result.storage === 'granted';
+    } catch (error) {
+      console.error('Error on non-Android platform:', error);
+      isRequesting = false;
+      return false;
+    }
   } catch (error) {
     console.error('Error in requestStoragePermissions:', error);
     isRequesting = false;
@@ -62,13 +74,21 @@ export const checkStoragePermissions = async (): Promise<boolean> => {
     const platform = Capacitor.getPlatform();
 
     if (platform === 'android') {
-      const result = await StoragePermission.checkManageExternalStorage();
-      return result.granted === true;
+      try {
+        const result = await StoragePermission.checkManageExternalStorage();
+        return result && result.granted === true;
+      } catch (e) {
+        return false;
+      }
     }
 
-    const { Filesystem } = await import('@capacitor/filesystem');
-    const status = await Filesystem.checkPermissions();
-    return status.storage === 'granted';
+    try {
+      const { Filesystem } = await import('@capacitor/filesystem');
+      const status = await Filesystem.checkPermissions();
+      return status.storage === 'granted';
+    } catch (e) {
+      return false;
+    }
   } catch (error) {
     console.error('Error in checkStoragePermissions:', error);
     return false;
@@ -89,12 +109,10 @@ export const openAppSettings = async (): Promise<void> => {
       return;
     }
 
-    const appSettingsUrl = 'app-settings:';
-    const canOpen = await App.canOpenUrl({ url: appSettingsUrl });
-
-    if (canOpen?.value) {
-      await App.openUrl({ url: appSettingsUrl });
-    } else {
+    try {
+      await App.openUrl({ url: 'app-settings:' });
+    } catch (e) {
+      console.error('Failed to open app-settings:', e);
       alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
     }
   } catch (error) {

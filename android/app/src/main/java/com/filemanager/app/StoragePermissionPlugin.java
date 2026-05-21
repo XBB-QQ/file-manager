@@ -5,18 +5,15 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
-import androidx.annotation.RequiresApi;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "StoragePermission")
 public class StoragePermissionPlugin extends Plugin {
-
-    private static final int MANAGE_STORAGE_REQUEST_CODE = 1001;
-    private PluginCall pendingCall = null;
 
     @PluginMethod
     public void checkManageExternalStorage(PluginCall call) {
@@ -47,32 +44,26 @@ public class StoragePermissionPlugin extends Plugin {
             return;
         }
 
-        pendingCall = call;
         try {
             Intent intent = new Intent();
             intent.setAction(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
             intent.setData(Uri.parse("package:" + getContext().getPackageName()));
-            startActivityForResult(call, intent, "onActivityResult");
+            startActivityForResult(call, intent, "onManageStorageResult");
         } catch (Exception e) {
             Intent intent = new Intent();
             intent.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-            startActivityForResult(call, intent, "onActivityResult");
+            startActivityForResult(call, intent, "onManageStorageResult");
         }
     }
 
-    @Override
-    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-        super.handleOnActivityResult(requestCode, resultCode, data);
-
-        if (requestCode == MANAGE_STORAGE_REQUEST_CODE && pendingCall != null) {
-            boolean hasPermission = false;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                hasPermission = Environment.isExternalStorageManager();
-            }
-            JSObject ret = new JSObject();
-            ret.put("granted", hasPermission);
-            pendingCall.resolve(ret);
-            pendingCall = null;
+    @ActivityCallback
+    private void onManageStorageResult(PluginCall call) {
+        boolean hasPermission = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            hasPermission = Environment.isExternalStorageManager();
         }
+        JSObject ret = new JSObject();
+        ret.put("granted", hasPermission);
+        call.resolve(ret);
     }
 }
