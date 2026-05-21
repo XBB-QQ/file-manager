@@ -17,13 +17,10 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
     const platform = Capacitor.getPlatform();
     console.log('Platform:', platform);
 
-    const { Device } = await import('@capacitor/device');
-    const info = await Device.getInfo();
-    const osVersion = parseInt(info?.osVersion || '0') || 0;
-    console.log('OS:', platform, 'Version:', osVersion);
-
-    if (platform === 'android' && osVersion >= 11) {
-      console.log('Android 11+, using native MANAGE_EXTERNAL_STORAGE request');
+    // On Android, always try the native MANAGE_EXTERNAL_STORAGE request
+    // The native plugin will handle version checks internally
+    if (platform === 'android') {
+      console.log('Android detected, using native MANAGE_EXTERNAL_STORAGE request');
 
       const checkResult = await StoragePermission.checkManageExternalStorage();
       console.log('Check result:', checkResult);
@@ -42,17 +39,12 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
       return result.granted === true;
     }
 
-    if (platform === 'android' && osVersion <= 10) {
-      console.log('Android <= 10, requesting storage permissions via Filesystem plugin');
-      const { Filesystem } = await import('@capacitor/filesystem');
-      const result = await Filesystem.requestPermissions();
-      console.log('Filesystem permissions result:', result);
-      isRequesting = false;
-      return result.storage === 'granted';
-    }
-
+    // iOS and other platforms
+    const { Filesystem } = await import('@capacitor/filesystem');
+    const result = await Filesystem.requestPermissions();
+    console.log('Filesystem permissions result:', result);
     isRequesting = false;
-    return false;
+    return result.storage === 'granted';
   } catch (error) {
     console.error('Error in requestStoragePermissions:', error);
     isRequesting = false;
@@ -69,22 +61,14 @@ export const checkStoragePermissions = async (): Promise<boolean> => {
     const { Capacitor } = await import('@capacitor/core');
     const platform = Capacitor.getPlatform();
 
-    const { Device } = await import('@capacitor/device');
-    const info = await Device.getInfo();
-    const osVersion = parseInt(info?.osVersion || '0') || 0;
-
-    if (platform === 'android' && osVersion >= 11) {
+    if (platform === 'android') {
       const result = await StoragePermission.checkManageExternalStorage();
       return result.granted === true;
     }
 
-    if (platform === 'android') {
-      const { Filesystem } = await import('@capacitor/filesystem');
-      const status = await Filesystem.checkPermissions();
-      return status.storage === 'granted';
-    }
-
-    return false;
+    const { Filesystem } = await import('@capacitor/filesystem');
+    const status = await Filesystem.checkPermissions();
+    return status.storage === 'granted';
   } catch (error) {
     console.error('Error in checkStoragePermissions:', error);
     return false;
