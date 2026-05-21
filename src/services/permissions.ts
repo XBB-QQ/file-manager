@@ -33,11 +33,50 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
       return true;
     }
 
-    console.log('Storage permission denied:', storagePermission);
+    console.log('Storage permission denied or prompt needed:', storagePermission);
+
+    const { Device } = await import('@capacitor/device');
+    const info = await Device.getInfo();
+    console.log('Device OS:', info.osName, 'Version:', info.osVersion);
+
+    const osVersion = parseInt(info.osVersion) || 0;
+    if (info.osName === 'android' && osVersion >= 11) {
+      console.log('Android 11+, needs MANAGE_EXTERNAL_STORAGE');
+      await openAndroid11Settings();
+    }
+
     return false;
   } catch (error) {
     console.error('Error requesting permissions:', error);
+
+    try {
+      const { Device } = await import('@capacitor/device');
+      const info = await Device.getInfo();
+      const osVersion = parseInt(info.osVersion) || 0;
+      if (info.osName === 'android' && osVersion >= 11) {
+        await openAndroid11Settings();
+      }
+    } catch (e) {
+      console.error('Failed to check device info');
+    }
+
     return false;
+  }
+};
+
+const openAndroid11Settings = async (): Promise<void> => {
+  try {
+    const { App } = await import('@capacitor/app');
+    await App.openUrl({
+      url: 'package:com.filemanager.app',
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await App.openUrl({
+      url: 'app-settings:',
+    });
+  } catch (error) {
+    console.error('Error opening Android 11 settings:', error);
+    alert('请手动前往设置 > 应用 > 文件管理器 > 权限，开启「所有文件访问权限」');
   }
 };
 
@@ -69,21 +108,23 @@ export const openAppSettings = async (): Promise<void> => {
       return;
     }
 
+    const { Device } = await import('@capacitor/device');
+    const info = await Device.getInfo();
+    const osVersion = parseInt(info.osVersion) || 0;
+
     const { App } = await import('@capacitor/app');
-    await App.openUrl({
-      url: 'app-settings:',
-    });
+
+    if (info.osName === 'android' && osVersion >= 11) {
+      await App.openUrl({
+        url: 'app-settings:',
+      });
+    } else {
+      await App.openUrl({
+        url: 'app-settings:',
+      });
+    }
   } catch (error) {
     console.error('Error opening settings:', error);
-
-    try {
-      const { App } = await import('@capacitor/app');
-      await App.openUrl({
-        url: 'package:com.filemanager.app',
-      });
-    } catch (e) {
-      console.error('Failed to open settings via fallback');
-      alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
-    }
+    alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
   }
 };
