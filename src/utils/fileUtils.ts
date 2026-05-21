@@ -1,4 +1,4 @@
-import { FileItem, FileCategory } from '@/types';
+import { FileCategory } from '../types';
 
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';

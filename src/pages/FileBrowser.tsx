@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFileStore } from '@/store/useFileStore';
+import { useFileStore } from '../store/useFileStore';
 import {
   Folder,
   FileText,
@@ -13,8 +13,8 @@ import {
   List,
   Trash2,
 } from 'lucide-react';
-import { FileItem } from '@/types';
-import { formatFileSize } from '@/utils/fileUtils';
+import { FileItem } from '../types';
+import { formatFileSize } from '../utils/fileUtils';
 
 const FileBrowser = () => {
   const {
