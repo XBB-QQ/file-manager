@@ -27,6 +27,22 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Register custom plugin in MainActivity
+        run: |
+          cat > android/app/src/main/java/com/filemanager/app/MainActivity.java << 'EOF'
+          package com.filemanager.app;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {
+            @Override
+            public void onCreate() {
+              super.onCreate();
+              try {
+                registerPlugin(StoragePermissionPlugin.class);
+              } catch (Exception e) {}
+            }
+          }
+          EOF
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
