@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { FileItem, CacheItem, StorageStats, LargeFile } from '../types';
-import { getFilesInDirectory, deleteFileOrFolder, copyFile, moveFile } from '../services/filesystem';
+import { getFilesInDirectory, deleteFileOrFolder, copyFileOrFolder, moveFileOrFolder } from '../services/filesystem';
 import { requestStoragePermissions, checkStoragePermissions } from '../services/permissions';
+import { getRealFiles, deleteFilesInDirectory as deleteCacheFiles } from '../services/systemInfo';
 
 interface FileStore {
   currentPath: string;
@@ -78,10 +79,10 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   navigateToFolder: (folder) => {
     const newPath = folder.path;
-    set({ 
-      currentPath: newPath, 
-      selectedFiles: new Set(), 
-      isMultiSelect: false 
+    set({
+      currentPath: newPath,
+      selectedFiles: new Set(),
+      isMultiSelect: false
     });
     get().loadFiles(newPath);
   },
@@ -120,17 +121,17 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   clearSelection: () => set({ selectedFiles: new Set(), isMultiSelect: false }),
 
-  toggleMultiSelect: () => set((state) => ({ 
-    isMultiSelect: !state.isMultiSelect, 
-    selectedFiles: !state.isMultiSelect ? new Set() : state.selectedFiles 
+  toggleMultiSelect: () => set((state) => ({
+    isMultiSelect: !state.isMultiSelect,
+    selectedFiles: !state.isMultiSelect ? new Set() : state.selectedFiles
   })),
 
   deleteSelected: async () => {
     const { selectedFiles, files, currentPath } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
-    
+
     for (const file of selectedFileItems) {
-      await deleteFileOrFolder(currentPath, file.name);
+      await deleteFileOrFolder(currentPath, file.name, file.type);
     }
 
     await get().loadFiles(currentPath);
@@ -140,20 +141,20 @@ export const useFileStore = create<FileStore>((set, get) => ({
   copyFiles: async () => {
     const { selectedFiles, files } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
-    set({ 
-      clipboard: { type: 'copy', files: selectedFileItems }, 
-      selectedFiles: new Set(), 
-      isMultiSelect: false 
+    set({
+      clipboard: { type: 'copy', files: selectedFileItems },
+      selectedFiles: new Set(),
+      isMultiSelect: false
     });
   },
 
   cutFiles: async () => {
     const { selectedFiles, files } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
-    set({ 
-      clipboard: { type: 'cut', files: selectedFileItems }, 
-      selectedFiles: new Set(), 
-      isMultiSelect: false 
+    set({
+      clipboard: { type: 'cut', files: selectedFileItems },
+      selectedFiles: new Set(),
+      isMultiSelect: false
     });
   },
 
@@ -162,15 +163,15 @@ export const useFileStore = create<FileStore>((set, get) => ({
     if (clipboard.files.length === 0) return;
 
     set({ isLoading: true });
-    
+
     try {
       for (const file of clipboard.files) {
         const destPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-        
+
         if (clipboard.type === 'copy') {
-          await copyFile(file.path, destPath);
+          await copyFileOrFolder(file.path, destPath, file.type);
         } else if (clipboard.type === 'cut') {
-          await moveFile(file.path, destPath);
+          await moveFileOrFolder(file.path, destPath, file.type);
         }
       }
       

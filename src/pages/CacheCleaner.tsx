@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Trash2, Smartphone, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
-import { getRealFiles } from '../services/systemInfo';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { getRealFiles, deleteFilesInDirectory } from '../services/systemInfo';
 
 interface CacheItem {
   id: string;
@@ -42,8 +41,6 @@ const CacheCleaner = () => {
         { name: 'B站', path: 'Android/data/tv.danmaku.bili/cache', types: '视频缓存、弹幕' },
       ];
 
-      let totalSize = 0;
-
       for (const app of androidDataDirs) {
         try {
           const files = await getRealFiles(app.path);
@@ -58,7 +55,6 @@ const CacheCleaner = () => {
               cachePath: app.path,
               isSelected: true
             });
-            totalSize += appCacheSize;
           }
         } catch (e) {
           console.log('Cannot scan:', app.name);
@@ -76,40 +72,6 @@ const CacheCleaner = () => {
       setIsScanning(false);
       setIsLoading(false);
     }
-  };
-
-  const deleteFilesInDirectory = async (path: string): Promise<number> => {
-    let deletedSize = 0;
-    try {
-      const files = await getRealFiles(path);
-
-      for (const file of files) {
-        if (file.type === 'file') {
-          try {
-            await Filesystem.deleteFile({
-              path: `${path}/${file.name}`,
-              directory: Directory.ExternalStorage,
-            });
-            deletedSize += file.size;
-          } catch (e) {
-            console.log('Cannot delete:', file.name);
-          }
-        } else if (file.type === 'folder') {
-          deletedSize += await deleteFilesInDirectory(file.path);
-          try {
-            await Filesystem.rmdir({
-              path: file.path,
-              directory: Directory.ExternalStorage,
-            });
-          } catch (e) {
-            console.log('Cannot delete folder:', file.path);
-          }
-        }
-      }
-    } catch (e) {
-      console.log('Cannot delete from:', path);
-    }
-    return deletedSize;
   };
 
   const toggleCacheSelection = (id: string) => {
@@ -130,9 +92,9 @@ const CacheCleaner = () => {
     setIsCleaning(true);
 
     try {
-      const selectedPaths = cacheItems.filter(item => item.isSelected);
+      const selectedItems = cacheItems.filter(item => item.isSelected);
 
-      for (const item of selectedPaths) {
+      for (const item of selectedItems) {
         await deleteFilesInDirectory(item.cachePath);
       }
 

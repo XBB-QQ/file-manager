@@ -4,21 +4,27 @@ import { getFileCategory } from '../utils/fileUtils';
 
 export const getFilesInDirectory = async (path: string): Promise<FileItem[]> => {
   try {
+    console.log('Reading directory:', path);
+
     let directory = Directory.Documents;
     let filePath = '';
-    
+
     if (path === '/' || path === '') {
       directory = Directory.ExternalStorage;
       filePath = '';
     } else {
       directory = Directory.ExternalStorage;
-      filePath = path;
+      filePath = path.startsWith('/') ? path.substring(1) : path;
     }
+
+    console.log('Using directory:', directory, 'path:', filePath);
 
     const result: ReaddirResult = await Filesystem.readdir({
       path: filePath,
       directory: directory,
     });
+
+    console.log('Directory read successful, files:', result.files.length);
 
     const files: FileItem[] = await Promise.all(
       result.files.map(async (fileInfo: FileInfo) => {
@@ -34,14 +40,15 @@ export const getFilesInDirectory = async (path: string): Promise<FileItem[]> => 
             });
             size = stat.size || 0;
             modified = stat.ctime ? new Date(stat.ctime) : new Date();
-          } catch {
+          } catch (e) {
+            console.log('Error getting file stats:', fileInfo.name, e);
             size = 0;
           }
         }
 
         const fullPath = path === '/' ? `/${fileInfo.name}` : `${path}/${fileInfo.name}`;
         const extension = fileInfo.name.split('.').pop()?.toLowerCase();
-        
+
         return {
           id: `${path}-${fileInfo.name}`,
           name: fileInfo.name,
@@ -58,27 +65,65 @@ export const getFilesInDirectory = async (path: string): Promise<FileItem[]> => 
     return files;
   } catch (error) {
     console.error('Error reading directory:', error);
-    return [];
+    throw error;
   }
 };
 
-export const deleteFileOrFolder = async (path: string, name: string): Promise<boolean> => {
+export const deleteFileOrFolder = async (path: string, name: string, fileType: 'file' | 'folder'): Promise<boolean> => {
   try {
-    const fullPath = path && path !== '/' ? `${path}/${name}` : name;
-    await Filesystem.deleteFile({
-      path: fullPath,
-      directory: Directory.ExternalStorage,
-    });
+    const cleanPath = path && path !== '/' ? (path.startsWith('/') ? path.substring(1) : path) : '';
+    const fullPath = cleanPath ? `${cleanPath}/${name}` : name;
+
+    if (fileType === 'folder') {
+      await deleteDirectoryRecursive(fullPath);
+    } else {
+      await Filesystem.deleteFile({
+        path: fullPath,
+        directory: Directory.ExternalStorage,
+      });
+    }
     return true;
   } catch (error) {
-    console.error('Error deleting file:', error);
+    console.error('Error deleting:', error);
     return false;
+  }
+};
+
+const deleteDirectoryRecursive = async (path: string): Promise<void> => {
+  try {
+    const result = await Filesystem.readdir({
+      path: path,
+      directory: Directory.ExternalStorage,
+    });
+
+    for (const file of result.files) {
+      const childPath = path ? `${path}/${file.name}` : file.name;
+
+      if (file.type === 'folder') {
+        await deleteDirectoryRecursive(childPath);
+      } else {
+        await Filesystem.deleteFile({
+          path: childPath,
+          directory: Directory.ExternalStorage,
+        });
+      }
+    }
+
+    await Filesystem.rmdir({
+      path: path,
+      directory: Directory.ExternalStorage,
+      recursive: true,
+    });
+  } catch (e) {
+    console.log('Cannot delete directory:', path, e);
+    throw e;
   }
 };
 
 export const createFolder = async (path: string, name: string): Promise<boolean> => {
   try {
-    const fullPath = path && path !== '/' ? `${path}/${name}` : name;
+    const cleanPath = path && path !== '/' ? (path.startsWith('/') ? path.substring(1) : path) : '';
+    const fullPath = cleanPath ? `${cleanPath}/${name}` : name;
     await Filesystem.mkdir({
       path: fullPath,
       directory: Directory.ExternalStorage,
@@ -91,39 +136,73 @@ export const createFolder = async (path: string, name: string): Promise<boolean>
   }
 };
 
-export const copyFile = async (srcPath: string, destPath: string): Promise<boolean> => {
+export const copyFileOrFolder = async (srcPath: string, destPath: string, fileType: 'file' | 'folder'): Promise<boolean> => {
   try {
-    const srcDir = Directory.ExternalStorage;
-    const destDir = Directory.ExternalStorage;
+    if (fileType === 'folder') {
+      await copyDirectoryRecursive(srcPath, destPath);
+    } else {
+      const srcDir = Directory.ExternalStorage;
+      const destDir = Directory.ExternalStorage;
 
-    const srcFile = await Filesystem.readFile({
-      path: srcPath,
-      directory: srcDir,
-    });
+      const srcFile = await Filesystem.readFile({
+        path: srcPath.startsWith('/') ? srcPath.substring(1) : srcPath,
+        directory: srcDir,
+      });
 
-    await Filesystem.writeFile({
-      path: destPath,
-      data: srcFile.data,
-      directory: destDir,
-    });
+      await Filesystem.writeFile({
+        path: destPath.startsWith('/') ? destPath.substring(1) : destPath,
+        data: srcFile.data,
+        directory: destDir,
+      });
+    }
     return true;
   } catch (error) {
-    console.error('Error copying file:', error);
+    console.error('Error copying:', error);
     return false;
   }
 };
 
-export const moveFile = async (srcPath: string, destPath: string): Promise<boolean> => {
+const copyDirectoryRecursive = async (srcPath: string, destPath: string): Promise<void> => {
   try {
-    const success = await copyFile(srcPath, destPath);
+    await Filesystem.mkdir({
+      path: destPath.startsWith('/') ? destPath.substring(1) : destPath,
+      directory: Directory.ExternalStorage,
+      recursive: false,
+    });
+
+    const result = await Filesystem.readdir({
+      path: srcPath.startsWith('/') ? srcPath.substring(1) : srcPath,
+      directory: Directory.ExternalStorage,
+    });
+
+    for (const file of result.files) {
+      const srcChildPath = srcPath.endsWith('/') ? `${srcPath}${file.name}` : `${srcPath}/${file.name}`;
+      const destChildPath = destPath.endsWith('/') ? `${destPath}${file.name}` : `${destPath}/${file.name}`;
+
+      if (file.type === 'folder') {
+        await copyDirectoryRecursive(srcChildPath, destChildPath);
+      } else {
+        await copyFileOrFolder(srcChildPath, destChildPath, 'file');
+      }
+    }
+  } catch (e) {
+    console.log('Cannot copy directory:', srcPath, e);
+    throw e;
+  }
+};
+
+export const moveFileOrFolder = async (srcPath: string, destPath: string, fileType: 'file' | 'folder'): Promise<boolean> => {
+  try {
+    const success = await copyFileOrFolder(srcPath, destPath, fileType);
     if (success) {
       const parts = srcPath.split('/');
       const fileName = parts[parts.length - 1];
-      await deleteFileOrFolder(srcPath.replace(`/${fileName}`, ''), fileName);
+      const parentPath = parts.slice(0, -1).join('/');
+      await deleteFileOrFolder(parentPath, fileName, fileType);
     }
     return success;
   } catch (error) {
-    console.error('Error moving file:', error);
+    console.error('Error moving:', error);
     return false;
   }
 };

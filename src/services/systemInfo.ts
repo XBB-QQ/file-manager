@@ -1,4 +1,5 @@
-import { Directory } from '@capacitor/filesystem';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { FileInfo } from '../types';
 
 export interface StorageInfo {
   total: number;
@@ -6,8 +7,7 @@ export interface StorageInfo {
   available: number;
 }
 
-export interface FileInfo {
-  id?: string;
+export interface ScanFileInfo {
   name: string;
   path: string;
   size: number;
@@ -25,7 +25,7 @@ export const getStorageInfo = async (): Promise<StorageInfo> => {
   } catch (e) {
     console.log('Using device storage API');
   }
-  
+
   return {
     total: 0,
     used: 0,
@@ -33,20 +33,18 @@ export const getStorageInfo = async (): Promise<StorageInfo> => {
   };
 };
 
-export const getRealFiles = async (basePath: string = ''): Promise<FileInfo[]> => {
+export const getRealFiles = async (basePath: string = ''): Promise<ScanFileInfo[]> => {
   try {
-    const { Filesystem } = await import('@capacitor/filesystem');
-    
     const result = await Filesystem.readdir({
       path: basePath,
       directory: Directory.ExternalStorage,
     });
-    
-    const files: FileInfo[] = await Promise.all(
+
+    const files: ScanFileInfo[] = await Promise.all(
       result.files.map(async (file) => {
         let size = 0;
         let modified = new Date();
-        
+
         if (file.type === 'file') {
           try {
             const stat = await Filesystem.stat({
@@ -59,7 +57,7 @@ export const getRealFiles = async (basePath: string = ''): Promise<FileInfo[]> =
             size = 0;
           }
         }
-        
+
         return {
           name: file.name,
           path: basePath ? `${basePath}/${file.name}` : `/${file.name}`,
@@ -69,7 +67,7 @@ export const getRealFiles = async (basePath: string = ''): Promise<FileInfo[]> =
         };
       })
     );
-    
+
     return files;
   } catch (error) {
     console.error('Error reading files:', error);
@@ -77,8 +75,44 @@ export const getRealFiles = async (basePath: string = ''): Promise<FileInfo[]> =
   }
 };
 
-export const scanLargeFiles = async (minSize: number = 100 * 1024 * 1024): Promise<FileInfo[]> => {
-  const largeFiles: FileInfo[] = [];
+export const deleteFilesInDirectory = async (path: string): Promise<number> => {
+  let deletedSize = 0;
+  try {
+    const files = await getRealFiles(path);
+
+    for (const file of files) {
+      if (file.type === 'file') {
+        try {
+          const cleanPath = `${path}/${file.name}`.replace(/^\/+/, '');
+          await Filesystem.deleteFile({
+            path: cleanPath,
+            directory: Directory.ExternalStorage,
+          });
+          deletedSize += file.size;
+        } catch (e) {
+          console.log('Cannot delete:', file.name);
+        }
+      } else if (file.type === 'folder') {
+        deletedSize += await deleteFilesInDirectory(file.path);
+        try {
+          const cleanPath = file.path.replace(/^\/+/, '');
+          await Filesystem.rmdir({
+            path: cleanPath,
+            directory: Directory.ExternalStorage,
+          });
+        } catch (e) {
+          console.log('Cannot delete folder:', file.path);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Cannot delete from:', path);
+  }
+  return deletedSize;
+};
+
+export const scanLargeFiles = async (minSize: number = 100 * 1024 * 1024): Promise<ScanFileInfo[]> => {
+  const largeFiles: ScanFileInfo[] = [];
   const scannedPaths = new Set<string>();
   
   const scanDirectory = async (path: string) => {

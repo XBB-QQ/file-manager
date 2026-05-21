@@ -1,101 +1,92 @@
+import StoragePermission from './storagePermissionPlugin';
+
+let isRequesting = false;
+
 export const requestStoragePermissions = async (): Promise<boolean> => {
+  if (isRequesting) return false;
+  isRequesting = true;
+
   try {
     if (typeof (window as any).Capacitor === 'undefined') {
-      console.log('Not in Capacitor environment, allowing access');
-      return true;
+      console.log('Not in Capacitor environment');
+      isRequesting = false;
+      return false;
     }
 
     const { Capacitor } = await import('@capacitor/core');
-    const Permissions = Capacitor.Plugins.Permissions;
+    const platform = Capacitor.getPlatform();
+    console.log('Platform:', platform);
 
-    console.log('Checking permissions first...');
-    const checkResult = await Permissions?.checkPermissions({
-      permissions: ['storage'],
-    });
-
-    console.log('Current permission state:', checkResult?.storage);
-
-    if (checkResult?.storage === 'granted') {
-      console.log('Permission already granted');
-      return true;
-    }
-
-    console.log('Requesting permissions...');
-    const result = await Permissions?.requestPermissions({
-      permissions: ['storage'],
-    });
-
-    console.log('Permission request result:', result);
-
-    const storagePermission = result?.storage;
-
-    if (storagePermission === 'granted' || storagePermission === 'prompt-with-rationale') {
-      console.log('Storage permission granted');
-      return true;
-    }
-
-    console.log('Storage permission denied or prompt needed:', storagePermission);
-
-    const Device = Capacitor.Plugins.Device;
-    const info = await Device?.getInfo();
-    console.log('Device OS:', info?.platform, 'Version:', info?.osVersion);
-
+    const { Device } = await import('@capacitor/device');
+    const info = await Device.getInfo();
     const osVersion = parseInt(info?.osVersion || '0') || 0;
-    if (info?.platform === 'android' && osVersion >= 11) {
-      console.log('Android 11+, needs MANAGE_EXTERNAL_STORAGE');
-      await openAndroid11Settings();
-    }
+    console.log('OS:', platform, 'Version:', osVersion);
 
-    return false;
-  } catch (error) {
-    console.error('Error requesting permissions:', error);
+    if (platform === 'android' && osVersion >= 11) {
+      console.log('Android 11+, using native MANAGE_EXTERNAL_STORAGE request');
 
-    try {
-      const { Capacitor } = await import('@capacitor/core');
-      const Device = Capacitor.Plugins.Device;
-      const info = await Device?.getInfo();
-      const osVersion = parseInt(info?.osVersion || '0') || 0;
-      if (info?.platform === 'android' && osVersion >= 11) {
-        await openAndroid11Settings();
+      const checkResult = await StoragePermission.checkManageExternalStorage();
+      console.log('Check result:', checkResult);
+
+      if (checkResult.granted) {
+        console.log('MANAGE_EXTERNAL_STORAGE already granted');
+        isRequesting = false;
+        return true;
       }
-    } catch (e) {
-      console.error('Failed to check device info');
+
+      console.log('Requesting MANAGE_EXTERNAL_STORAGE via native plugin');
+      const result = await StoragePermission.requestManageExternalStorage();
+      console.log('Request result:', result);
+
+      isRequesting = false;
+      return result.granted === true;
     }
 
-    return false;
-  }
-};
+    if (platform === 'android' && osVersion <= 10) {
+      console.log('Android <= 10, requesting storage permissions via Filesystem plugin');
+      const { Filesystem } = await import('@capacitor/filesystem');
+      const result = await Filesystem.requestPermissions();
+      console.log('Filesystem permissions result:', result);
+      isRequesting = false;
+      return result.storage === 'granted';
+    }
 
-const openAndroid11Settings = async (): Promise<void> => {
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    const App = Capacitor.Plugins.App;
-    await App?.launchUrl({ url: 'package:com.filemanager.app' });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await App?.launchUrl({ url: 'app-settings:' });
+    isRequesting = false;
+    return false;
   } catch (error) {
-    console.error('Error opening Android 11 settings:', error);
-    alert('请手动前往设置 > 应用 > 文件管理器 > 权限，开启「所有文件访问权限」');
+    console.error('Error in requestStoragePermissions:', error);
+    isRequesting = false;
+    return false;
   }
 };
 
 export const checkStoragePermissions = async (): Promise<boolean> => {
   try {
     if (typeof (window as any).Capacitor === 'undefined') {
-      return true;
+      return false;
     }
 
     const { Capacitor } = await import('@capacitor/core');
-    const Permissions = Capacitor.Plugins.Permissions;
+    const platform = Capacitor.getPlatform();
 
-    const result = await Permissions?.checkPermissions({
-      permissions: ['storage'],
-    });
+    const { Device } = await import('@capacitor/device');
+    const info = await Device.getInfo();
+    const osVersion = parseInt(info?.osVersion || '0') || 0;
 
-    console.log('Check permissions result:', result?.storage);
-    return result?.storage === 'granted';
+    if (platform === 'android' && osVersion >= 11) {
+      const result = await StoragePermission.checkManageExternalStorage();
+      return result.granted === true;
+    }
+
+    if (platform === 'android') {
+      const { Filesystem } = await import('@capacitor/filesystem');
+      const status = await Filesystem.checkPermissions();
+      return status.storage === 'granted';
+    }
+
+    return false;
   } catch (error) {
-    console.error('Error checking permissions:', error);
+    console.error('Error in checkStoragePermissions:', error);
     return false;
   }
 };
@@ -103,25 +94,27 @@ export const checkStoragePermissions = async (): Promise<boolean> => {
 export const openAppSettings = async (): Promise<void> => {
   try {
     if (typeof (window as any).Capacitor === 'undefined') {
-      console.log('Not in Capacitor environment');
       alert('请在手机设置中手动授予存储权限');
       return;
     }
 
     const { Capacitor } = await import('@capacitor/core');
-    const Device = Capacitor.Plugins.Device;
-    const info = await Device?.getInfo();
-    const osVersion = parseInt(info?.osVersion || '0') || 0;
-
     const App = Capacitor.Plugins.App;
+    if (!App) {
+      alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
+      return;
+    }
 
-    if (info?.platform === 'android' && osVersion >= 11) {
-      await App?.launchUrl({ url: 'app-settings:' });
+    const appSettingsUrl = 'app-settings:';
+    const canOpen = await App.canOpenUrl({ url: appSettingsUrl });
+
+    if (canOpen?.value) {
+      await App.openUrl({ url: appSettingsUrl });
     } else {
-      await App?.launchUrl({ url: 'app-settings:' });
+      alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
     }
   } catch (error) {
     console.error('Error opening settings:', error);
-    alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
+    alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
   }
 };
