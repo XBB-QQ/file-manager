@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getStorageBreakdown, scanLargeFiles, FileInfo } from '../services/systemInfo';
+import { getStorageBreakdown, scanLargeFiles, ScanFileInfo } from '../services/systemInfo';
 import { HardDrive, Trash2, AlertCircle } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
 
@@ -11,7 +11,7 @@ const StorageAnalysis = () => {
     available: 0,
     breakdown: [] as { name: string; value: number; color: string }[]
   });
-  const [largeFiles, setLargeFiles] = useState<FileInfo[]>([]);
+  const [largeFiles, setLargeFiles] = useState<(ScanFileInfo & { id: string })[]>([]);
 
   useEffect(() => {
     loadStorageData();

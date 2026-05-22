@@ -99,7 +99,7 @@ const deleteDirectoryRecursive = async (path: string): Promise<void> => {
     for (const file of result.files) {
       const childPath = path ? `${path}/${file.name}` : file.name;
 
-      if (file.type === 'folder') {
+      if (file.type === 'directory') {
         await deleteDirectoryRecursive(childPath);
       } else {
         await Filesystem.deleteFile({
@@ -179,7 +179,7 @@ const copyDirectoryRecursive = async (srcPath: string, destPath: string): Promis
       const srcChildPath = srcPath.endsWith('/') ? `${srcPath}${file.name}` : `${srcPath}/${file.name}`;
       const destChildPath = destPath.endsWith('/') ? `${destPath}${file.name}` : `${destPath}/${file.name}`;
 
-      if (file.type === 'folder') {
+      if (file.type === 'directory') {
         await copyDirectoryRecursive(srcChildPath, destChildPath);
       } else {
         await copyFileOrFolder(srcChildPath, destChildPath, 'file');

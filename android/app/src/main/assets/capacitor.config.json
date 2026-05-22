@@ -1,5 +1,8 @@
 {
 	"appId": "com.filemanager.app",
 	"appName": "文件管理器",
-	"webDir": "dist"
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "http"
+	}
 }

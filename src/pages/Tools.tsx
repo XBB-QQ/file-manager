@@ -138,23 +138,23 @@ const Tools = () => {
           </div>
 
           <div className="p-4">
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => { setActiveTab('storage'); loadStorageInfo(); }}
+                className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'storage' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                存储分析
+              </button>
+              <button
+                onClick={() => { setActiveTab('large'); loadLargeFiles(); }}
+                className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'large' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                大文件
+              </button>
+            </div>
+
             {activeTab === 'storage' ? (
               <>
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={() => { setActiveTab('storage'); loadStorageInfo(); }}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'storage' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-                  >
-                    存储分析
-                  </button>
-                  <button
-                    onClick={() => { setActiveTab('large'); loadLargeFiles(); }}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'large' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-                  >
-                    大文件
-                  </button>
-                </div>
-
                 {isLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <RefreshCw size={24} className="animate-spin text-blue-500" />
@@ -183,21 +183,6 @@ const Tools = () => {
               </>
             ) : (
               <>
-                <div className="flex gap-2 mb-4">
-                  <button
-                    onClick={() => { setActiveTab('storage'); loadStorageInfo(); }}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'storage' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-                  >
-                    存储分析
-                  </button>
-                  <button
-                    onClick={() => { setActiveTab('large'); loadLargeFiles(); }}
-                    className={`flex-1 py-2 rounded-lg font-medium transition-colors ${activeTab === 'large' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-                  >
-                    大文件
-                  </button>
-                </div>
-
                 {isLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <RefreshCw size={24} className="animate-spin text-blue-500" />

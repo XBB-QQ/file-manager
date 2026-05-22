@@ -1,5 +1,4 @@
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { FileInfo } from '../types';
 
 export interface StorageInfo {
   total: number;

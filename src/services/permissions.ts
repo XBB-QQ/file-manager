@@ -51,7 +51,7 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
       const result = await Filesystem.requestPermissions();
       console.log('Filesystem permissions result:', JSON.stringify(result));
       isRequesting = false;
-      return result.storage === 'granted';
+      return result.publicStorage === 'granted';
     } catch (error) {
       console.error('Error on non-Android platform:', error);
       isRequesting = false;
@@ -85,7 +85,7 @@ export const checkStoragePermissions = async (): Promise<boolean> => {
     try {
       const { Filesystem } = await import('@capacitor/filesystem');
       const status = await Filesystem.checkPermissions();
-      return status.storage === 'granted';
+      return status.publicStorage === 'granted';
     } catch (e) {
       return false;
     }
@@ -97,24 +97,18 @@ export const checkStoragePermissions = async (): Promise<boolean> => {
 
 export const openAppSettings = async (): Promise<void> => {
   try {
-    if (typeof (window as any).Capacitor === 'undefined') {
-      alert('请在手机设置中手动授予存储权限');
-      return;
-    }
-
     const { Capacitor } = await import('@capacitor/core');
-    const App = Capacitor.Plugins.App;
-    if (!App) {
-      alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
-      return;
+    const platform = Capacitor.getPlatform();
+
+    if (platform === 'android') {
+      try {
+        const { App } = await import('@capacitor/app');
+        App.minimizeApp();
+      } catch (_) {
+      }
     }
 
-    try {
-      await App.openUrl({ url: 'app-settings:' });
-    } catch (e) {
-      console.error('Failed to open app-settings:', e);
-      alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
-    }
+    alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
   } catch (error) {
     console.error('Error opening settings:', error);
     alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
