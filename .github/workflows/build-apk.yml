@@ -27,23 +27,6 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Register custom plugin in MainActivity
-        run: |
-          # 检查文件是否存在
-          if [ ! -f "android/app/src/main/java/com/filemanager/app/MainActivity.java" ]; then
-            echo "Error: MainActivity.java does not exist"
-            exit 1
-          fi
-          
-          # 检查是否已经注册了插件
-          if ! grep -q "registerPlugin(StoragePermissionPlugin.class)" android/app/src/main/java/com/filemanager/app/MainActivity.java; then
-            # 添加导入语句
-            sed -i '4i\\import com.filemanager.app.StoragePermissionPlugin;' android/app/src/main/java/com/filemanager/app/MainActivity.java
-            
-            # 在 onCreate 方法中添加插件注册
-            sed -i '/super.onCreate();/a\        try {\n            registerPlugin(StoragePermissionPlugin.class);\n        } catch (Exception e) {\n            android.util.Log.e("MainActivity", "Error registering StoragePermissionPlugin", e);\n        }' android/app/src/main/java/com/filemanager/app/MainActivity.java
-          fi
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
