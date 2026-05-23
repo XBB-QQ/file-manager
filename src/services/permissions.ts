@@ -2,17 +2,20 @@ import StoragePermission from './storagePermissionPlugin';
 
 let isRequesting = false;
 
-async function verifyPermissionByRead(): Promise<boolean> {
+async function tryReadStorage(): Promise<boolean> {
   try {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
-    await Filesystem.readdir({
-      path: '',
-      directory: Directory.ExternalStorage,
-    });
+    await Filesystem.readdir({ path: '', directory: Directory.ExternalStorage });
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
+}
+
+async function isAndroid(): Promise<boolean> {
+  if (typeof (window as any).Capacitor === 'undefined') return false;
+  const { Capacitor } = await import('@capacitor/core');
+  return Capacitor.getPlatform() === 'android';
 }
 
 export const requestStoragePermissions = async (): Promise<boolean> => {
@@ -20,81 +23,28 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
   isRequesting = true;
 
   try {
-    if (typeof (window as any).Capacitor === 'undefined') {
-      console.log('Not in Capacitor environment');
+    const canRead = await tryReadStorage();
+    if (canRead) {
       isRequesting = false;
-      return false;
+      return true;
     }
 
-    const { Capacitor } = await import('@capacitor/core');
-    const platform = Capacitor.getPlatform();
-    console.log('Platform:', platform);
-
-    if (platform === 'android') {
-      console.log('Android detected, using native MANAGE_EXTERNAL_STORAGE request');
-
-      try {
-        const checkResult = await StoragePermission.checkManageExternalStorage();
-        console.log('Check result:', JSON.stringify(checkResult));
-
-        if (checkResult && checkResult.granted === true) {
-          console.log('MANAGE_EXTERNAL_STORAGE already granted');
-          isRequesting = false;
-          return true;
-        }
-
-        const canRead = await verifyPermissionByRead();
-        if (canRead) {
-          console.log('Native check returned false but file read succeeded, permission is granted');
-          isRequesting = false;
-          return true;
-        }
-
-        console.log('Requesting MANAGE_EXTERNAL_STORAGE via native plugin');
-        const result = await StoragePermission.requestManageExternalStorage();
-        console.log('Request result:', JSON.stringify(result));
-
-        if (result && result.granted === true) {
-          isRequesting = false;
-          return true;
-        }
-
-        const canReadAfterRequest = await verifyPermissionByRead();
-        if (canReadAfterRequest) {
-          console.log('Settings returned false but file read succeeded, permission is granted');
-          isRequesting = false;
-          return true;
-        }
-
-        isRequesting = false;
-        return false;
-      } catch (pluginError) {
-        console.error('Native plugin call failed:', pluginError);
-
-        const canRead = await verifyPermissionByRead();
-        if (canRead) {
-          console.log('Plugin failed but file read succeeded, permission is granted');
-          isRequesting = false;
-          return true;
-        }
-
-        await openAppSettings();
-        isRequesting = false;
-        return false;
-      }
+    const android = await isAndroid();
+    if (!android) {
+      isRequesting = false;
+      return false;
     }
 
     try {
-      const { Filesystem } = await import('@capacitor/filesystem');
-      const result = await Filesystem.requestPermissions();
-      console.log('Filesystem permissions result:', JSON.stringify(result));
-      isRequesting = false;
-      return result.publicStorage === 'granted';
-    } catch (error) {
-      console.error('Error on non-Android platform:', error);
+      await StoragePermission.requestManageExternalStorage();
+    } catch {
       isRequesting = false;
       return false;
     }
+
+    const canReadNow = await tryReadStorage();
+    isRequesting = false;
+    return canReadNow;
   } catch (error) {
     console.error('Error in requestStoragePermissions:', error);
     isRequesting = false;
@@ -103,52 +53,5 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
 };
 
 export const checkStoragePermissions = async (): Promise<boolean> => {
-  try {
-    if (typeof (window as any).Capacitor === 'undefined') {
-      return false;
-    }
-
-    const { Capacitor } = await import('@capacitor/core');
-    const platform = Capacitor.getPlatform();
-
-    if (platform === 'android') {
-      try {
-        const result = await StoragePermission.checkManageExternalStorage();
-        return result && result.granted === true;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    try {
-      const { Filesystem } = await import('@capacitor/filesystem');
-      const status = await Filesystem.checkPermissions();
-      return status.publicStorage === 'granted';
-    } catch (e) {
-      return false;
-    }
-  } catch (error) {
-    console.error('Error in checkStoragePermissions:', error);
-    return false;
-  }
-};
-
-export const openAppSettings = async (): Promise<void> => {
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    const platform = Capacitor.getPlatform();
-
-    if (platform === 'android') {
-      try {
-        const { App } = await import('@capacitor/app');
-        App.minimizeApp();
-      } catch (_) {
-      }
-    }
-
-    alert('请在手机设置 > 应用 > 文件管理器 > 权限中授予存储权限');
-  } catch (error) {
-    console.error('Error opening settings:', error);
-    alert('请手动前往 设置 > 应用 > 文件管理器 > 权限');
-  }
+  return tryReadStorage();
 };

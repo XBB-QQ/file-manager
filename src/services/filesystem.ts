@@ -207,6 +207,66 @@ export const moveFileOrFolder = async (srcPath: string, destPath: string, fileTy
   }
 };
 
-export const getStorageStats = async (): Promise<{ total: number; used: number; available: number } | null> => {
-  return null;
+export const renameFileOrFolder = async (parentPath: string, oldName: string, newName: string, fileType: 'file' | 'folder'): Promise<boolean> => {
+  try {
+    const cleanParent = parentPath && parentPath !== '/' ? (parentPath.startsWith('/') ? parentPath.substring(1) : parentPath) : '';
+    const oldFull = cleanParent ? `${cleanParent}/${oldName}` : oldName;
+    const newFull = cleanParent ? `${cleanParent}/${newName}` : newName;
+
+    await Filesystem.rename({
+      from: oldFull,
+      to: newFull,
+      directory: Directory.ExternalStorage,
+    });
+    return true;
+  } catch (e) {
+    console.error('Error renaming:', e);
+    return false;
+  }
+};
+
+export const searchFiles = async (
+  basePath: string,
+  query: string,
+  maxResults: number = 50
+): Promise<FileItem[]> => {
+  const results: FileItem[] = [];
+  const searchLower = query.toLowerCase();
+
+  const scanDir = async (dirPath: string) => {
+    if (results.length >= maxResults) return;
+    try {
+      const cleanPath = dirPath && dirPath !== '/' ? (dirPath.startsWith('/') ? dirPath.substring(1) : dirPath) : '';
+      const items = await Filesystem.readdir({
+        path: cleanPath,
+        directory: Directory.ExternalStorage,
+      });
+
+      for (const item of items.files) {
+        if (results.length >= maxResults) return;
+        if (item.name.toLowerCase().includes(searchLower)) {
+          const fullPath = dirPath === '/' ? `/${item.name}` : `${dirPath}/${item.name}`;
+          results.push({
+            id: `${dirPath}-${item.name}`,
+            name: item.name,
+            type: item.type as 'file' | 'folder',
+            size: 0,
+            modified: new Date(),
+            path: fullPath,
+            extension: item.type === 'file' ? item.name.split('.').pop()?.toLowerCase() : undefined,
+            category: item.type === 'file' ? getFileCategory(item.name) : undefined,
+          });
+        }
+        if (item.type === 'directory' && !item.name.startsWith('.') && item.name !== 'Android') {
+          const childPath = dirPath === '/' ? `/${item.name}` : `${dirPath}/${item.name}`;
+          await scanDir(childPath);
+        }
+      }
+    } catch (e) {
+      // Skip inaccessible directories
+    }
+  };
+
+  await scanDir(basePath);
+  return results;
 };

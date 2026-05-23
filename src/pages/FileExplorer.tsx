@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
+import { createFolder, renameFileOrFolder, searchFiles } from '../services/filesystem';
 import {
   Menu,
   ChevronLeft,
@@ -19,13 +20,15 @@ import {
   Smartphone,
   Archive,
   Folder,
+  FolderPlus,
+  PenLine,
   Star,
   Clock,
   Download,
   HardDrive,
   CheckSquare,
   RefreshCw,
-  AlertCircle,
+  Loader2,
   Shield,
   X,
 } from 'lucide-react';
@@ -62,6 +65,14 @@ const FileExplorer = () => {
   } = useFileStore();
 
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [renameFile, setRenameFile] = useState<FileItem | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<FileItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const sortedFiles = getSortedFiles();
 
   useEffect(() => {
@@ -131,6 +142,65 @@ const FileExplorer = () => {
     });
   };
 
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    const ok = await createFolder(currentPath, newFolderName.trim());
+    if (ok) {
+      setNewFolderName('');
+      setShowNewFolder(false);
+      refreshFiles();
+    } else {
+      alert('创建文件夹失败');
+    }
+  };
+
+  const handleStartRename = (file: FileItem) => {
+    setRenameFile(file);
+    setRenameName(file.name);
+  };
+
+  const handleConfirmRename = async () => {
+    if (!renameFile || !renameName.trim() || renameName.trim() === renameFile.name) {
+      setRenameFile(null);
+      return;
+    }
+    const ok = await renameFileOrFolder(currentPath, renameFile.name, renameName.trim(), renameFile.type);
+    if (ok) {
+      setRenameFile(null);
+      refreshFiles();
+    } else {
+      alert('重命名失败');
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    setShowSearch(true);
+    try {
+      const results = await searchFiles('/', searchQuery.trim(), 50);
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleNavigateToSearchResult = (file: FileItem) => {
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    if (file.type === 'folder') {
+      setCurrentPath(file.path);
+    } else {
+      const parts = file.path.split('/');
+      parts.pop();
+      const parentPath = parts.join('/') || '/';
+      setCurrentPath(parentPath);
+    }
+  };
+
   const quickAccessItems = [
     { icon: Star, label: '收藏夹', color: 'text-yellow-500' },
     { icon: Download, label: '下载', color: 'text-blue-500' },
@@ -198,8 +268,11 @@ const FileExplorer = () => {
               <h1 className="text-lg font-semibold">文件管理器</h1>
             </div>
             <div className="flex items-center gap-1">
-              <button className="p-2 hover:bg-gray-100 rounded-full">
+              <button onClick={() => setShowSearch(true)} className="p-2 hover:bg-gray-100 rounded-full">
                 <Search size={24} />
+              </button>
+              <button onClick={() => setShowNewFolder(true)} className="p-2 hover:bg-gray-100 rounded-full" title="新建文件夹">
+                <FolderPlus size={24} />
               </button>
               <button
                 onClick={refreshFiles}
@@ -252,7 +325,94 @@ const FileExplorer = () => {
         </div>
       )}
 
-      {/* 侧边栏 */}
+      {/* 新文件夹输入 */}
+      {showNewFolder && !isMultiSelect && (
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
+          <Folder size={20} className="text-blue-500 flex-shrink-0" />
+          <input
+            autoFocus
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') setShowNewFolder(false); }}
+            placeholder="文件夹名称"
+            className="flex-1 px-3 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+          />
+          <button onClick={handleCreateFolder} className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg">确定</button>
+          <button onClick={() => setShowNewFolder(false)} className="p-1 hover:bg-gray-100 rounded">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* 重命名输入 */}
+      {renameFile && !isMultiSelect && (
+        <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
+          <PenLine size={20} className="text-purple-500 flex-shrink-0" />
+          <input
+            autoFocus
+            value={renameName}
+            onChange={e => setRenameName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(); if (e.key === 'Escape') setRenameFile(null); }}
+            className="flex-1 px-3 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+          />
+          <button onClick={handleConfirmRename} className="px-3 py-1 bg-purple-500 text-white text-sm rounded-lg">确定</button>
+          <button onClick={() => setRenameFile(null)} className="p-1 hover:bg-gray-100 rounded">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* 搜索模态框 */}
+      {showSearch && (
+        <div className="absolute inset-0 bg-white z-50 flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200">
+            <button onClick={() => { setShowSearch(false); setSearchResults([]); setSearchQuery(''); }} className="p-1 hover:bg-gray-100 rounded">
+              <ChevronLeft size={24} />
+            </button>
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
+              placeholder="搜索文件..."
+              className="flex-1 px-3 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none"
+            />
+            <button onClick={handleSearch} className="px-3 py-2 bg-blue-500 text-white text-sm rounded-lg">搜索</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {isSearching ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 size={24} className="animate-spin text-blue-500" />
+              </div>
+            ) : searchResults.length > 0 ? (
+              <div className="p-2 space-y-1">
+                {searchResults.map(file => {
+                  const Icon = getFileIcon(file);
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => handleNavigateToSearchResult(file)}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      {Icon}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{file.path}</p>
+                      </div>
+                      {file.type === 'file' && <span className="text-xs text-gray-400">{formatFileSize(file.size)}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : searchQuery && !isSearching ? (
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                <Search size={40} className="mb-2 opacity-50" />
+                <p>未找到匹配文件</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
       {showSidebar && (
         <div className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-lg z-50 flex flex-col">
           <div className="p-4 bg-blue-500 text-white">
@@ -393,6 +553,14 @@ const FileExplorer = () => {
                       {' · '}{file.modified.toLocaleDateString()}
                     </p>
                   </div>
+                  {!isMultiSelect && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleStartRename(file); }}
+                      className="p-1 hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100"
+                    >
+                      <PenLine size={14} className="text-gray-400" />
+                    </button>
+                  )}
                 </div>
               );
             })}
