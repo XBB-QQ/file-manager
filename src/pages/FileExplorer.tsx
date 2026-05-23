@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
 import { createFolder, renameFileOrFolder, searchFiles } from '../services/filesystem';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import {
   Menu,
   ChevronLeft,
@@ -31,6 +32,8 @@ import {
   Loader2,
   Shield,
   X,
+  Play,
+  Info,
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileUtils';
@@ -73,6 +76,9 @@ const FileExplorer = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [previewData, setPreviewData] = useState<string>('');
+  const [previewType, setPreviewType] = useState<'image' | 'video' | 'text' | 'info' | 'loading'>('loading');
   const sortedFiles = getSortedFiles();
 
   useEffect(() => {
@@ -110,6 +116,8 @@ const FileExplorer = () => {
       toggleFileSelection(file.id);
     } else if (file.type === 'folder') {
       navigateToFolder(file);
+    } else {
+      handlePreviewFile(file);
     }
   };
 
@@ -199,6 +207,88 @@ const FileExplorer = () => {
       parts.pop();
       const parentPath = parts.join('/') || '/';
       setCurrentPath(parentPath);
+    }
+  };
+
+  const getMimeFromExt = (name: string): string => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    const mimes: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+      mp4: 'video/mp4', webm: 'video/webm', '3gp': 'video/3gpp', mkv: 'video/x-matroska',
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac', aac: 'audio/aac',
+      txt: 'text/plain', md: 'text/plain', json: 'application/json', xml: 'text/xml',
+      html: 'text/html', css: 'text/css', js: 'text/javascript', log: 'text/plain',
+      csv: 'text/csv',
+    };
+    return mimes[ext] || '';
+  };
+
+  const isTextFile = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    return ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'log', 'csv', 'yml', 'yaml', 'ini', 'cfg', 'conf'].includes(ext);
+  };
+
+  const handlePreviewFile = async (file: FileItem) => {
+    if (file.size > 100 * 1024 * 1024) {
+      setPreviewFile(file);
+      setPreviewType('info');
+      return;
+    }
+
+    setPreviewFile(file);
+    setPreviewType('loading');
+    setPreviewData('');
+
+    try {
+      const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+      const result = await Filesystem.readFile({
+        path: cleanPath,
+        directory: Directory.ExternalStorage,
+      });
+      const data = (result.data as string) || '';
+
+      const mime = getMimeFromExt(file.name);
+      if (mime.startsWith('image/')) {
+        setPreviewData(`data:${mime};base64,${data}`);
+        setPreviewType('image');
+      } else if (mime.startsWith('video/')) {
+        try {
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: mime });
+          setPreviewData(URL.createObjectURL(blob));
+          setPreviewType('video');
+        } catch {
+          setPreviewType('info');
+        }
+      } else if (mime.startsWith('audio/')) {
+        try {
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: mime });
+          setPreviewData(URL.createObjectURL(blob));
+          setPreviewType('video');
+        } catch {
+          setPreviewType('info');
+        }
+      } else if (isTextFile(file.name)) {
+        try {
+          const decoded = decodeURIComponent(escape(atob(data)));
+          setPreviewData(decoded.substring(0, 50000));
+          setPreviewType('text');
+        } catch {
+          setPreviewData(data);
+          setPreviewType('text');
+        }
+      } else {
+        setPreviewType('info');
+      }
+    } catch (e) {
+      console.error('Preview failed:', e);
+      setPreviewType('info');
     }
   };
 
@@ -460,6 +550,51 @@ const FileExplorer = () => {
 
       {/* 文件列表 */}
       <div className="flex-1 overflow-y-auto p-2">
+        {/* 预览弹窗 */}
+        {previewFile && (
+          <div className="absolute inset-0 bg-black/80 z-50 flex flex-col" onClick={() => { setPreviewFile(null); setPreviewData(''); }}>
+            <div className="flex items-center justify-between px-4 py-3 text-white">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{previewFile.name}</p>
+                <p className="text-xs text-gray-400">{formatFileSize(previewFile.size)}</p>
+              </div>
+              <button onClick={() => { setPreviewFile(null); setPreviewData(''); }} className="p-2 hover:bg-white/10 rounded-full">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="flex-1 flex items-center justify-center overflow-auto" onClick={e => e.stopPropagation()}>
+              {previewType === 'loading' && (
+                <Loader2 size={40} className="animate-spin text-white" />
+              )}
+              {previewType === 'image' && previewData && (
+                <img src={previewData} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
+              )}
+              {previewType === 'video' && previewData && (
+                <video src={previewData} controls autoPlay className="max-w-full max-h-full rounded-lg" />
+              )}
+              {previewType === 'text' && (
+                <div className="w-full max-w-2xl max-h-full overflow-auto bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                  <pre className="whitespace-pre-wrap break-all">{previewData || '(空文件)'}</pre>
+                </div>
+              )}
+              {previewType === 'info' && (
+                <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
+                  <div className="flex flex-col items-center text-center">
+                    <FileText size={48} className="text-gray-400 mb-4" />
+                    <h3 className="font-semibold text-gray-800 mb-2">{previewFile.name}</h3>
+                    <div className="w-full space-y-2 mt-4 text-left text-sm">
+                      <div className="flex justify-between"><span className="text-gray-500">大小</span><span className="font-medium">{formatFileSize(previewFile.size)}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">路径</span><span className="font-medium truncate ml-2">{previewFile.path}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">类型</span><span className="font-medium">{previewFile.extension?.toUpperCase() || '未知'} {previewFile.category || ''}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">修改时间</span><span className="font-medium">{previewFile.modified.toLocaleString()}</span></div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-4">不支持预览此格式</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {permissionError && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
             <div className="flex items-start gap-3">

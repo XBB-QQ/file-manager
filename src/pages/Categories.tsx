@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import {
   Image as ImageIcon,
   Video,
@@ -19,6 +20,8 @@ import {
   Search,
   ChevronLeft,
   Loader2,
+  X,
+  Info,
 } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
 import { scanFilesByCategory, CategoryFiles, ScanFileInfo } from '../services/systemInfo';
@@ -31,6 +34,75 @@ const Categories = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [permissionError, setPermissionError] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ name: string; path: string; size: number } | null>(null);
+  const [previewData, setPreviewData] = useState('');
+  const [previewType, setPreviewType] = useState<'image' | 'video' | 'text' | 'info' | 'loading'>('loading');
+
+  const getMimeFromExt = (name: string): string => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    const m: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+      webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml',
+      mp4: 'video/mp4', webm: 'video/webm', '3gp': 'video/3gpp', mkv: 'video/x-matroska',
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
+      txt: 'text/plain', md: 'text/plain', json: 'application/json', xml: 'text/xml',
+      html: 'text/html', css: 'text/css', js: 'text/javascript', log: 'text/plain', csv: 'text/csv',
+    };
+    return m[ext] || '';
+  };
+
+  const isTextFile = (name: string) => {
+    const ext = name.split('.').pop()?.toLowerCase() || '';
+    return ['txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'log', 'csv', 'yml', 'yaml', 'ini', 'cfg'].includes(ext);
+  };
+
+  const handlePreview = async (file: { name: string; path: string; size: number }) => {
+    if (file.size > 100 * 1024 * 1024) {
+      setPreviewFile(file);
+      setPreviewType('info');
+      return;
+    }
+    setPreviewFile(file);
+    setPreviewType('loading');
+    setPreviewData('');
+
+    try {
+      const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+      const result = await Filesystem.readFile({ path: cleanPath, directory: Directory.ExternalStorage });
+      const data = (result.data as string) || '';
+      const mime = getMimeFromExt(file.name);
+
+      if (mime.startsWith('image/')) {
+        setPreviewData(`data:${mime};base64,${data}`);
+        setPreviewType('image');
+      } else if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+        try {
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          setPreviewData(URL.createObjectURL(new Blob([bytes], { type: mime })));
+          setPreviewType('video');
+        } catch {
+          setPreviewType('info');
+        }
+      } else if (isTextFile(file.name)) {
+        try {
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          setPreviewData(new TextDecoder('utf-8').decode(bytes).substring(0, 50000));
+          setPreviewType('text');
+        } catch {
+          setPreviewData(data);
+          setPreviewType('text');
+        }
+      } else {
+        setPreviewType('info');
+      }
+    } catch {
+      setPreviewType('info');
+    }
+  };
 
   const loadCategories = async () => {
     setIsLoading(true);
@@ -134,7 +206,8 @@ const Categories = () => {
                   .map((file, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-100"
+                      onClick={() => handlePreview(file)}
+                      className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-100 cursor-pointer hover:bg-gray-50"
                     >
                       <Folder size={18} className="text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -143,13 +216,50 @@ const Categories = () => {
                       </div>
                       <span className="text-xs text-gray-500 flex-shrink-0">{formatFileSize(file.size)}</span>
                       <button
-                        onClick={() => handleDeleteFile(file)}
+                        onClick={e => { e.stopPropagation(); handleDeleteFile(file); }}
                         className="p-1 hover:bg-red-50 rounded flex-shrink-0"
                       >
                         <Trash2 size={14} className="text-red-400 hover:text-red-500" />
                       </button>
                     </div>
                   ))}
+              </div>
+            )}
+
+            {previewFile && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex flex-col" onClick={() => { setPreviewFile(null); setPreviewData(''); }}>
+                <div className="flex items-center justify-between px-4 py-3 text-white">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{previewFile.name}</p>
+                    <p className="text-xs text-gray-400">{formatFileSize(previewFile.size)}</p>
+                  </div>
+                  <button onClick={() => { setPreviewFile(null); setPreviewData(''); }} className="p-2 hover:bg-white/10 rounded-full">
+                    <X size={24} />
+                  </button>
+                </div>
+                <div className="flex-1 flex items-center justify-center overflow-auto" onClick={e => e.stopPropagation()}>
+                  {previewType === 'loading' && <Loader2 size={40} className="animate-spin text-white" />}
+                  {previewType === 'image' && previewData && <img src={previewData} alt={previewFile.name} className="max-w-full max-h-full object-contain" />}
+                  {previewType === 'video' && previewData && <video src={previewData} controls autoPlay className="max-w-full max-h-full rounded-lg" />}
+                  {previewType === 'text' && (
+                    <div className="w-full max-w-2xl max-h-full overflow-auto bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                      <pre className="whitespace-pre-wrap break-all">{previewData || '(空文件)'}</pre>
+                    </div>
+                  )}
+                  {previewType === 'info' && (
+                    <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
+                      <div className="flex flex-col items-center text-center">
+                        <FileText size={48} className="text-gray-400 mb-4" />
+                        <h3 className="font-semibold text-gray-800 mb-2">{previewFile.name}</h3>
+                        <div className="w-full space-y-2 mt-4 text-left text-sm">
+                          <div className="flex justify-between"><span className="text-gray-500">大小</span><span className="font-medium">{formatFileSize(previewFile.size)}</span></div>
+                          <div className="flex justify-between"><span className="text-gray-500">路径</span><span className="font-medium truncate ml-2">{previewFile.path}</span></div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-4">不支持预览此格式</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

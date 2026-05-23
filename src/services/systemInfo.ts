@@ -87,22 +87,34 @@ export const scanFilesByCategory = async (): Promise<Record<string, CategoryFile
     other: { name: '其他', icon: 'other', files: [], totalSize: 0 },
   };
 
-  const scanDirs = ['', 'Pictures', 'DCIM', 'Download', 'Documents', 'Music', 'Movies', 'WhatsApp/Media'];
+  const SKIP_DIRS = new Set(['Android', 'lost+found', '.thumbnails', '.cache']);
 
-  for (const dir of scanDirs) {
+  const addFile = (file: ScanFileInfo) => {
+    const cat = categorizeFile(file);
+    if (cat && categories[cat]) {
+      categories[cat].files.push(file);
+      categories[cat].totalSize += file.size;
+    }
+  };
+
+  const scanOneLevel = async (dirPath: string) => {
     try {
-      const files = await getRealFiles(dir);
-      for (const file of files) {
-        if (file.type === 'file') {
-          const cat = categorizeFile(file);
-          if (cat && categories[cat]) {
-            categories[cat].files.push(file);
-            categories[cat].totalSize += file.size;
-          }
+      const files = await getRealFiles(dirPath);
+      for (const item of files) {
+        if (item.type === 'file') {
+          addFile(item);
         }
       }
+      return files;
     } catch {
-      // Directory doesn't exist or is inaccessible
+      return [];
+    }
+  };
+
+  const items = await scanOneLevel('');
+  for (const item of items) {
+    if (item.type === 'folder' && !item.name.startsWith('.') && !SKIP_DIRS.has(item.name)) {
+      await scanOneLevel(item.path);
     }
   }
 
