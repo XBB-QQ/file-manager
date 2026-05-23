@@ -126,7 +126,8 @@ const FileExplorer = () => {
     switch (label) {
       case '内部存储': setCurrentPath('/'); break;
       case '下载': setCurrentPath('/Download'); break;
-      default: alert('功能开发中'); break;
+      case '收藏夹':
+      case '最近': setCurrentPath('/'); break;
     }
   };
 
@@ -287,7 +288,7 @@ const FileExplorer = () => {
               >
                 {viewMode === 'grid' ? <List size={24} /> : <Grid size={24} />}
               </button>
-              <button className="p-2 hover:bg-gray-100 rounded-full">
+              <button onClick={toggleMultiSelect} className="p-2 hover:bg-gray-100 rounded-full">
                 <MoreVertical size={24} />
               </button>
             </div>
@@ -532,7 +533,7 @@ const FileExplorer = () => {
                   onClick={(e) => handleFileClick(file, e)}
                   onContextMenu={(e) => handleLongPress(file, e)}
                   className={`
-                    flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all
+                    group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all
                     ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}
                   `}
                 >

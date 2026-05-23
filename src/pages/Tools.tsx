@@ -30,8 +30,7 @@ interface CacheItem {
 }
 
 const cacheDirectories = [
-  { name: 'Temp 文件', dirs: ['/temp', '/tmp', '/cache'], color: 'text-orange-500' },
-  { name: '下载文件整理', dirs: ['/Download'], color: 'text-blue-500' },
+  { name: '下载文件', dirs: ['Download'], color: 'text-blue-500' },
 ];
 
 const Tools = () => {
