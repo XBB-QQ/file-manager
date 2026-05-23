@@ -2,6 +2,19 @@ import StoragePermission from './storagePermissionPlugin';
 
 let isRequesting = false;
 
+async function verifyPermissionByRead(): Promise<boolean> {
+  try {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    await Filesystem.readdir({
+      path: '',
+      directory: Directory.ExternalStorage,
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 export const requestStoragePermissions = async (): Promise<boolean> => {
   if (isRequesting) return false;
   isRequesting = true;
@@ -17,7 +30,6 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
     const platform = Capacitor.getPlatform();
     console.log('Platform:', platform);
 
-    // On Android, always try the native MANAGE_EXTERNAL_STORAGE request
     if (platform === 'android') {
       console.log('Android detected, using native MANAGE_EXTERNAL_STORAGE request');
 
@@ -31,21 +43,47 @@ export const requestStoragePermissions = async (): Promise<boolean> => {
           return true;
         }
 
+        const canRead = await verifyPermissionByRead();
+        if (canRead) {
+          console.log('Native check returned false but file read succeeded, permission is granted');
+          isRequesting = false;
+          return true;
+        }
+
         console.log('Requesting MANAGE_EXTERNAL_STORAGE via native plugin');
         const result = await StoragePermission.requestManageExternalStorage();
         console.log('Request result:', JSON.stringify(result));
 
+        if (result && result.granted === true) {
+          isRequesting = false;
+          return true;
+        }
+
+        const canReadAfterRequest = await verifyPermissionByRead();
+        if (canReadAfterRequest) {
+          console.log('Settings returned false but file read succeeded, permission is granted');
+          isRequesting = false;
+          return true;
+        }
+
         isRequesting = false;
-        return result && result.granted === true;
+        return false;
       } catch (pluginError) {
         console.error('Native plugin call failed:', pluginError);
+
+        const canRead = await verifyPermissionByRead();
+        if (canRead) {
+          console.log('Plugin failed but file read succeeded, permission is granted');
+          isRequesting = false;
+          return true;
+        }
+
         await openAppSettings();
         isRequesting = false;
         return false;
       }
     }
 
-    // iOS and other platforms
     try {
       const { Filesystem } = await import('@capacitor/filesystem');
       const result = await Filesystem.requestPermissions();

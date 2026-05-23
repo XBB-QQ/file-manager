@@ -54,6 +54,7 @@ const FileExplorer = () => {
     cutFiles,
     pasteFiles,
     getSortedFiles,
+    loadFiles,
     refreshFiles,
     permissionError,
     hasPermission,
@@ -64,7 +65,9 @@ const FileExplorer = () => {
   const sortedFiles = getSortedFiles();
 
   useEffect(() => {
-    requestPermissions();
+    requestPermissions().then(granted => {
+      if (granted) loadFiles('/');
+    });
   }, []);
 
   const getFileIcon = (file: FileItem) => {
@@ -122,7 +125,10 @@ const FileExplorer = () => {
   };
 
   const handlePermissionRetry = () => {
-    requestPermissions();
+    useFileStore.setState({ hasPermission: false });
+    requestPermissions().then(granted => {
+      if (granted) loadFiles('/');
+    });
   };
 
   const quickAccessItems = [

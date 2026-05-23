@@ -275,12 +275,14 @@ export const useFileStore = create<FileStore>((set, get) => ({
   },
 
   requestPermissions: async (): Promise<boolean> => {
+    const { hasPermission } = get();
+    if (hasPermission) return true;
+
     try {
       const granted = await requestStoragePermissions();
       
       if (granted) {
         set({ hasPermission: true, permissionError: null });
-        get().loadFiles('/');
         return true;
       } else {
         set({ 
