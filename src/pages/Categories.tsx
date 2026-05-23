@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useFileStore } from '../store/useFileStore';
 import {
   Image as ImageIcon,
   Video,
@@ -10,18 +11,28 @@ import {
   Star,
   Download,
   HardDrive,
-  Clock
+  Clock,
+  Shield,
+  RefreshCw,
 } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
 import { getRealFiles } from '../services/systemInfo';
-import { FileCategory } from '../types';
 
 const Categories = () => {
+  const { requestPermissions } = useFileStore();
   const [categoryStats, setCategoryStats] = useState<Record<string, { count: number; size: number }>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState(false);
 
   useEffect(() => {
-    loadCategoryStats();
+    requestPermissions().then(granted => {
+      if (granted) {
+        loadCategoryStats();
+      } else {
+        setPermissionError(true);
+        setIsLoading(false);
+      }
+    });
   }, []);
 
   const loadCategoryStats = async () => {
@@ -150,7 +161,32 @@ const Categories = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {isLoading ? (
+        {permissionError ? (
+          <div className="flex flex-col items-center justify-center h-64">
+            <Shield size={48} className="text-amber-500 mb-4" />
+            <p className="text-gray-600 font-medium mb-2">需要存储权限</p>
+            <p className="text-gray-400 text-sm text-center mb-4">
+              无法扫描文件分类，请先授予存储权限
+            </p>
+            <button
+              onClick={() => {
+                setPermissionError(false);
+                setIsLoading(true);
+                requestPermissions().then(granted => {
+                  if (granted) {
+                    loadCategoryStats();
+                  } else {
+                    setPermissionError(true);
+                    setIsLoading(false);
+                  }
+                });
+              }}
+              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              请求权限
+            </button>
+          </div>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
           </div>

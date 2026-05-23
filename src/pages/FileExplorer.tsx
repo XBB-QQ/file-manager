@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
 import {
   Menu,
@@ -26,11 +27,13 @@ import {
   RefreshCw,
   AlertCircle,
   Shield,
+  X,
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileUtils';
 
 const FileExplorer = () => {
+  const navigate = useNavigate();
   const {
     currentPath,
     selectedFiles,
@@ -51,17 +54,17 @@ const FileExplorer = () => {
     cutFiles,
     pasteFiles,
     getSortedFiles,
-    loadFiles,
     refreshFiles,
     permissionError,
     hasPermission,
+    requestPermissions,
   } = useFileStore();
 
   const [showSidebar, setShowSidebar] = useState(false);
   const sortedFiles = getSortedFiles();
 
   useEffect(() => {
-    loadFiles('/');
+    requestPermissions();
   }, []);
 
   const getFileIcon = (file: FileItem) => {
@@ -102,6 +105,24 @@ const FileExplorer = () => {
       toggleMultiSelect();
     }
     toggleFileSelection(file.id);
+  };
+
+  const handleQuickAccess = (label: string) => {
+    setShowSidebar(false);
+    switch (label) {
+      case '内部存储': setCurrentPath('/'); break;
+      case '下载': setCurrentPath('/Download'); break;
+      default: alert('功能开发中'); break;
+    }
+  };
+
+  const handleCategoryNav = () => {
+    setShowSidebar(false);
+    navigate('/categories');
+  };
+
+  const handlePermissionRetry = () => {
+    requestPermissions();
   };
 
   const quickAccessItems = [
@@ -239,6 +260,7 @@ const FileExplorer = () => {
                 <div
                   key={idx}
                   className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer"
+                  onClick={() => handleQuickAccess(item.label)}
                 >
                   <Icon size={24} className={item.color} />
                   <span className="font-medium">{item.label}</span>
@@ -249,19 +271,19 @@ const FileExplorer = () => {
             <div className="px-3 py-2 text-xs text-gray-500 font-semibold">
               分类
             </div>
-            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer">
+            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={handleCategoryNav}>
               <Image size={24} className="text-green-500" />
               <span className="font-medium">图片</span>
             </div>
-            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer">
+            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={handleCategoryNav}>
               <Video size={24} className="text-purple-500" />
               <span className="font-medium">视频</span>
             </div>
-            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer">
+            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={handleCategoryNav}>
               <Music size={24} className="text-pink-500" />
               <span className="font-medium">音乐</span>
             </div>
-            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer">
+            <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={handleCategoryNav}>
               <FileText size={24} className="text-yellow-600" />
               <span className="font-medium">文档</span>
             </div>
@@ -281,10 +303,10 @@ const FileExplorer = () => {
                   {permissionError}。请在设置中授予权限以访问文件。
                 </p>
                 <button
-                  onClick={() => loadFiles('/')}
+                  onClick={handlePermissionRetry}
                   className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
                 >
-                  刷新重试
+                  请求权限
                 </button>
               </div>
             </div>
