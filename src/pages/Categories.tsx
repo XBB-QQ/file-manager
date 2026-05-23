@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
 import {
   Image as ImageIcon,
@@ -14,20 +15,40 @@ import {
   Clock,
   Shield,
   RefreshCw,
+  Trash2,
+  Search,
+  ChevronLeft,
+  Loader2,
 } from 'lucide-react';
 import { formatFileSize } from '../utils/fileUtils';
-import { getRealFiles } from '../services/systemInfo';
+import { scanFilesByCategory, CategoryFiles, ScanFileInfo } from '../services/systemInfo';
+import { deleteFileOrFolder } from '../services/filesystem';
 
 const Categories = () => {
-  const { requestPermissions } = useFileStore();
-  const [categoryStats, setCategoryStats] = useState<Record<string, { count: number; size: number }>>({});
+  const navigate = useNavigate();
+  const { requestPermissions, hasPermission } = useFileStore();
+  const [categories, setCategories] = useState<Record<string, CategoryFiles>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [permissionError, setPermissionError] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const loadCategories = async () => {
+    setIsLoading(true);
+    try {
+      const cats = await scanFilesByCategory();
+      setCategories(cats);
+      setPermissionError(false);
+    } catch {
+      setPermissionError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     requestPermissions().then(granted => {
       if (granted) {
-        loadCategoryStats();
+        loadCategories();
       } else {
         setPermissionError(true);
         setIsLoading(false);
@@ -35,111 +56,42 @@ const Categories = () => {
     });
   }, []);
 
-  const loadCategoryStats = async () => {
-    setIsLoading(true);
-    try {
-      const stats: Record<string, { count: number; size: number }> = {
-        image: { count: 0, size: 0 },
-        video: { count: 0, size: 0 },
-        audio: { count: 0, size: 0 },
-        document: { count: 0, size: 0 },
-        apk: { count: 0, size: 0 },
-        archive: { count: 0, size: 0 },
-      };
-
-      const dirs = ['Pictures', 'DCIM', 'Download', 'Documents', 'Music', 'Movies'];
-
-      for (const dir of dirs) {
-        try {
-          const files = await getRealFiles(dir);
-          
-          for (const file of files) {
-            if (file.type === 'file') {
-              const ext = file.name.split('.').pop()?.toLowerCase() || '';
-              
-              if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) {
-                stats.image.count++;
-                stats.image.size += file.size;
-              } else if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'].includes(ext)) {
-                stats.video.count++;
-                stats.video.size += file.size;
-              } else if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) {
-                stats.audio.count++;
-                stats.audio.size += file.size;
-              } else if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(ext)) {
-                stats.document.count++;
-                stats.document.size += file.size;
-              } else if (ext === 'apk') {
-                stats.apk.count++;
-                stats.apk.size += file.size;
-              } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
-                stats.archive.count++;
-                stats.archive.size += file.size;
-              }
-            }
-          }
-        } catch (e) {
-          console.log('Cannot scan:', dir);
+  const handleDeleteFile = async (file: ScanFileInfo) => {
+    const parts = file.path.split('/');
+    const name = parts.pop() || '';
+    const parentPath = parts.join('/') || '/';
+    const ok = await deleteFileOrFolder(parentPath, name, 'file');
+    if (ok) {
+      setCategories(prev => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          updated[key] = {
+            ...updated[key],
+            files: updated[key].files.filter(f => f.path !== file.path),
+            totalSize: updated[key].totalSize - (key === selectedCategory ? file.size : 0),
+          };
         }
-      }
-
-      setCategoryStats(stats);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    } finally {
-      setIsLoading(false);
+        return updated;
+      });
     }
   };
 
-  const categories = [
-    { 
-      id: 'image', 
-      label: '图片', 
-      icon: ImageIcon, 
-      color: 'text-green-500',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200'
-    },
-    { 
-      id: 'video', 
-      label: '视频', 
-      icon: Video, 
-      color: 'text-purple-500',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200'
-    },
-    { 
-      id: 'document', 
-      label: '文档', 
-      icon: FileText, 
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-50',
-      borderColor: 'border-yellow-200'
-    },
-    { 
-      id: 'audio', 
-      label: '音乐', 
-      icon: Music, 
-      color: 'text-pink-500',
-      bgColor: 'bg-pink-50',
-      borderColor: 'border-pink-200'
-    },
-    { 
-      id: 'apk', 
-      label: '应用', 
-      icon: Smartphone, 
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
-    },
-    { 
-      id: 'archive', 
-      label: '压缩包', 
-      icon: Archive, 
-      color: 'text-orange-500',
-      bgColor: 'bg-orange-50',
-      borderColor: 'border-orange-200'
-    },
+  const handleSelectCategory = (catId: string) => {
+    setSelectedCategory(catId);
+  };
+
+  const handleBack = () => {
+    setSelectedCategory(null);
+    loadCategories();
+  };
+
+  const categoryCards = [
+    { id: 'image', label: '图片', icon: ImageIcon, color: 'text-green-500', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
+    { id: 'video', label: '视频', icon: Video, color: 'text-purple-500', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' },
+    { id: 'document', label: '文档', icon: FileText, color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' },
+    { id: 'audio', label: '音乐', icon: Music, color: 'text-pink-500', bgColor: 'bg-pink-50', borderColor: 'border-pink-200' },
+    { id: 'apk', label: '应用', icon: Smartphone, color: 'text-blue-500', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+    { id: 'archive', label: '压缩包', icon: Archive, color: 'text-orange-500', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
   ];
 
   const quickAccess = [
@@ -149,103 +101,160 @@ const Categories = () => {
     { icon: Clock, label: '最近文件', color: 'text-purple-500' },
   ];
 
-  const totalSize = Object.values(categoryStats).reduce((sum, stat) => sum + stat.size, 0);
-  const totalCount = Object.values(categoryStats).reduce((sum, stat) => sum + stat.count, 0);
+  const totalCount = Object.values(categories).reduce((sum, cat) => sum + cat.files.length, 0);
+  const totalSize = Object.values(categories).reduce((sum, cat) => sum + cat.totalSize, 0);
+
+  const selectedCategoryData = selectedCategory ? categories[selectedCategory] : null;
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4">
-        <div className="flex items-center h-14">
-          <h1 className="text-lg font-semibold">文件分类</h1>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        {permissionError ? (
-          <div className="flex flex-col items-center justify-center h-64">
-            <Shield size={48} className="text-amber-500 mb-4" />
-            <p className="text-gray-600 font-medium mb-2">需要存储权限</p>
-            <p className="text-gray-400 text-sm text-center mb-4">
-              无法扫描文件分类，请先授予存储权限
-            </p>
-            <button
-              onClick={() => {
-                setPermissionError(false);
-                setIsLoading(true);
-                requestPermissions().then(granted => {
-                  if (granted) {
-                    loadCategoryStats();
-                  } else {
-                    setPermissionError(true);
-                    setIsLoading(false);
-                  }
-                });
-              }}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              请求权限
-            </button>
-          </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <>
-            <div className="bg-blue-500 rounded-xl p-4 text-white mb-6">
-              <p className="text-blue-100 text-sm">已扫描文件</p>
-              <p className="text-2xl font-bold mt-1">{totalCount} 个文件</p>
-              <p className="text-blue-100 text-sm mt-1">共占用 {formatFileSize(totalSize)}</p>
+      {selectedCategory && selectedCategoryData ? (
+        <>
+          <div className="bg-white border-b border-gray-200 px-4">
+            <div className="flex items-center h-14 gap-2">
+              <button onClick={handleBack} className="p-1 hover:bg-gray-100 rounded">
+                <ChevronLeft size={24} />
+              </button>
+              <h1 className="text-lg font-semibold">{selectedCategoryData.name}</h1>
+              <span className="text-sm text-gray-400 ml-1">
+                {selectedCategoryData.files.length} 个文件 · {formatFileSize(selectedCategoryData.totalSize)}
+              </span>
             </div>
-
-            <div className="mb-6">
-              <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">快捷访问</h2>
-              <div className="grid grid-cols-4 gap-2">
-                {quickAccess.map((item, idx) => {
-                  const Icon = item.icon;
-                  return (
+          </div>
+          <div className="flex-1 overflow-y-auto p-2">
+            {selectedCategoryData.files.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <Folder size={48} className="mb-2 opacity-50" />
+                <p>此分类下没有文件</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {selectedCategoryData.files
+                  .sort((a, b) => b.size - a.size)
+                  .map((file, idx) => (
                     <div
                       key={idx}
-                      className="flex flex-col items-center p-3 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer"
+                      className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-gray-100"
                     >
-                      <div className={`p-3 rounded-full ${item.color.replace('text-', 'bg-').replace('500', '100')}`}>
-                        <Icon size={28} className={item.color} />
+                      <Folder size={18} className="text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-400 truncate">{file.path}</p>
                       </div>
-                      <span className="text-xs font-medium text-gray-700 mt-2">{item.label}</span>
+                      <span className="text-xs text-gray-500 flex-shrink-0">{formatFileSize(file.size)}</span>
+                      <button
+                        onClick={() => handleDeleteFile(file)}
+                        className="p-1 hover:bg-red-50 rounded flex-shrink-0"
+                      >
+                        <Trash2 size={14} className="text-red-400 hover:text-red-500" />
+                      </button>
                     </div>
-                  );
-                })}
+                  ))}
               </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="bg-white border-b border-gray-200 px-4">
+            <div className="flex items-center h-14">
+              <h1 className="text-lg font-semibold">文件分类</h1>
             </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {permissionError ? (
+              <div className="flex flex-col items-center justify-center h-64">
+                <Shield size={48} className="text-amber-500 mb-4" />
+                <p className="text-gray-600 font-medium mb-2">需要存储权限</p>
+                <p className="text-gray-400 text-sm text-center mb-4">无法扫描文件分类，请先授予存储权限</p>
+                <button
+                  onClick={() => {
+                    setPermissionError(false);
+                    setIsLoading(true);
+                    requestPermissions().then(granted => {
+                      if (granted) loadCategories();
+                      else { setPermissionError(true); setIsLoading(false); }
+                    });
+                  }}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  请求权限
+                </button>
+              </div>
+            ) : isLoading ? (
+              <div className="flex flex-col items-center justify-center h-64">
+                <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
+                <p className="text-gray-400 text-sm">正在扫描文件...</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-blue-500 rounded-xl p-4 text-white mb-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-blue-100 text-sm">已扫描文件</p>
+                      <p className="text-2xl font-bold mt-1">{totalCount} 个文件</p>
+                      <p className="text-blue-100 text-sm mt-1">共占用 {formatFileSize(totalSize)}</p>
+                    </div>
+                    <button onClick={loadCategories} className="p-2 bg-white/20 rounded-full hover:bg-white/30">
+                      <RefreshCw size={20} />
+                    </button>
+                  </div>
+                </div>
 
-            <div>
-              <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">文件类型</h2>
-              <div className="grid grid-cols-3 gap-3">
-                {categories.map((category) => {
-                  const Icon = category.icon;
-                  const stats = categoryStats[category.id] || { count: 0, size: 0 };
-                  
-                  return (
-                    <div
-                      key={category.id}
-                      className={`flex flex-col items-center p-4 bg-white rounded-xl shadow-sm border ${category.borderColor} hover:shadow-md transition-all cursor-pointer`}
-                    >
-                      <div className={`p-4 rounded-2xl ${category.bgColor}`}>
-                        <Icon size={36} className={category.color} />
-                      </div>
-                      <p className="font-semibold text-gray-700 mt-3">{category.label}</p>
-                      <p className="text-xs text-gray-400 mt-1">{stats.count} 个</p>
-                      <p className="text-sm font-medium text-gray-600 mt-1">
-                        {formatFileSize(stats.size)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+                <div className="mb-6">
+                  <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">快捷访问</h2>
+                  <div className="grid grid-cols-4 gap-2">
+                    {quickAccess.map((item, idx) => {
+                      const Icon = item.icon;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => navigate('/')}
+                          className="flex flex-col items-center p-3 bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer"
+                        >
+                          <div className={`p-3 rounded-full ${item.color.replace('text-', 'bg-').replace('500', '100')}`}>
+                            <Icon size={28} className={item.color} />
+                          </div>
+                          <span className="text-xs font-medium text-gray-700 mt-2">{item.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">文件类型</h2>
+                  <div className="grid grid-cols-3 gap-3">
+                    {categoryCards.map(card => {
+                      const Icon = card.icon;
+                      const data = categories[card.id];
+                      const count = data?.files.length || 0;
+                      const size = data?.totalSize || 0;
+
+                      return (
+                        <div
+                          key={card.id}
+                          onClick={() => { if (data?.files.length) handleSelectCategory(card.id); }}
+                          className={`flex flex-col items-center p-4 bg-white rounded-xl shadow-sm border ${card.borderColor} ${data?.files.length ? 'hover:shadow-md cursor-pointer' : 'opacity-60'} transition-all`}
+                        >
+                          <div className={`p-4 rounded-2xl ${card.bgColor}`}>
+                            <Icon size={36} className={card.color} />
+                          </div>
+                          <p className="font-semibold text-gray-700 mt-3">{card.label}</p>
+                          <p className="text-xs text-gray-400 mt-1">{isLoading ? '...' : `${count} 个`}</p>
+                          <p className="text-sm font-medium text-gray-600 mt-1">
+                            {isLoading ? '...' : formatFileSize(size)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

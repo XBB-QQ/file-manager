@@ -22,6 +22,8 @@ import {
 import { getRealFiles } from '../services/systemInfo';
 import { formatFileSize } from '../utils/fileUtils';
 
+import { App } from '@capacitor/app';
+
 const showComingSoon = () => alert('功能开发中');
 
 const Me = () => {
@@ -195,7 +197,10 @@ const Me = () => {
             </div>
           </div>
 
-          <button className="w-full mt-4 mb-6 flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => { try { App.exitApp() } catch { alert('无法退出应用'); } }}
+            className="w-full mt-4 mb-6 flex items-center justify-center gap-2 px-4 py-3 bg-white rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 transition-colors"
+          >
             <LogOut size={18} className="text-red-500" />
             <span className="text-sm text-red-500 font-medium">退出</span>
           </button>

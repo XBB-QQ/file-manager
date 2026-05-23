@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { FileItem, CacheItem, StorageStats, LargeFile } from '../types';
 import { getFilesInDirectory, deleteFileOrFolder, copyFileOrFolder, moveFileOrFolder } from '../services/filesystem';
 import { requestStoragePermissions, checkStoragePermissions } from '../services/permissions';
-import { getRealFiles, deleteFilesInDirectory as deleteCacheFiles } from '../services/systemInfo';
+import { getRealFiles } from '../services/systemInfo';
 
 interface FileStore {
   currentPath: string;

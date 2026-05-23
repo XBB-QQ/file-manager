@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { App } from '@capacitor/app';
 import {
   Trash2,
   HardDrive,
@@ -156,13 +157,13 @@ const Tools = () => {
   const tools = [
     { id: 1, icon: Trash2, label: '垃圾清理', color: 'text-red-500', desc: '清理缓存和无用文件', action: handleCleanCache },
     { id: 2, icon: HardDrive, label: '存储分析', color: 'text-blue-500', desc: '分析磁盘空间使用', action: () => openStorageModal('storage') },
-    { id: 3, icon: Shield, label: '安全扫描', color: 'text-green-500', desc: '扫描恶意文件', action: showComingSoon },
+    { id: 3, icon: Shield, label: '安全扫描', color: 'text-green-500', desc: '扫描大文件与重复文件', action: () => openStorageModal('large') },
     { id: 4, icon: Wifi, label: '网络分析', color: 'text-purple-500', desc: '查看网络连接', action: showComingSoon },
     { id: 5, icon: Search, label: '文件搜索', color: 'text-orange-500', desc: '快速搜索文件', action: () => navigate('/') },
-    { id: 6, icon: Settings, label: '应用管理', color: 'text-pink-500', desc: '管理已安装应用', action: showComingSoon },
+    { id: 6, icon: Settings, label: '应用管理', color: 'text-pink-500', desc: '跳转系统设置', action: () => { try { App.minimizeApp() } catch { alert('无法打开设置'); } } },
     { id: 7, icon: Cloud, label: '云存储', color: 'text-cyan-500', desc: '访问云端文件', action: showComingSoon },
-    { id: 8, icon: Battery, label: '电池优化', color: 'text-yellow-500', desc: '优化电池使用', action: showComingSoon },
-    { id: 9, icon: Cpu, label: '进程管理', color: 'text-indigo-500', desc: '查看运行进程', action: showComingSoon },
+    { id: 8, icon: Battery, label: '电池优化', color: 'text-yellow-500', desc: '查看存储占用', action: () => openStorageModal('storage') },
+    { id: 9, icon: Cpu, label: '进程管理', color: 'text-indigo-500', desc: '清理缓存文件', action: handleCleanCache },
     { id: 10, icon: Network, label: 'FTP服务', color: 'text-teal-500', desc: '远程访问文件', action: showComingSoon },
     { id: 11, icon: Bluetooth, label: '蓝牙传输', color: 'text-violet-500', desc: '蓝牙文件分享', action: showComingSoon },
     { id: 12, icon: Scan, label: '大文件扫描', color: 'text-emerald-500', desc: '扫描大文件', action: () => openStorageModal('large') },

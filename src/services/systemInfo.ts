@@ -1,11 +1,5 @@
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
-export interface StorageInfo {
-  total: number;
-  used: number;
-  available: number;
-}
-
 export interface ScanFileInfo {
   name: string;
   path: string;
@@ -14,28 +8,18 @@ export interface ScanFileInfo {
   modified: Date;
 }
 
-export const getStorageInfo = async (): Promise<StorageInfo> => {
-  try {
-    const result = await fetch('file:///android_asset/public/storage-info.json');
-    if (result.ok) {
-      const data = await result.json();
-      return data;
-    }
-  } catch (e) {
-    console.log('Using device storage API');
-  }
-
-  return {
-    total: 0,
-    used: 0,
-    available: 0
-  };
-};
+export interface CategoryFiles {
+  name: string;
+  icon: string;
+  files: ScanFileInfo[];
+  totalSize: number;
+}
 
 export const getRealFiles = async (basePath: string = ''): Promise<ScanFileInfo[]> => {
   try {
+    const cleanPath = basePath.replace(/^\/+/, '');
     const result = await Filesystem.readdir({
-      path: basePath,
+      path: cleanPath,
       directory: Directory.ExternalStorage,
     });
 
@@ -46,13 +30,14 @@ export const getRealFiles = async (basePath: string = ''): Promise<ScanFileInfo[
 
         if (file.type === 'file') {
           try {
+            const filePath = cleanPath ? `${cleanPath}/${file.name}` : file.name;
             const stat = await Filesystem.stat({
-              path: `${basePath}/${file.name}`.replace(/^\/+/, ''),
+              path: filePath,
               directory: Directory.ExternalStorage,
             });
             size = stat.size || 0;
             modified = stat.mtime ? new Date(stat.mtime) : new Date();
-          } catch (e) {
+          } catch {
             size = 0;
           }
         }
@@ -68,59 +53,89 @@ export const getRealFiles = async (basePath: string = ''): Promise<ScanFileInfo[
     );
 
     return files;
-  } catch (error) {
-    console.error('Error reading files:', error);
+  } catch {
     return [];
   }
 };
 
-export const deleteFilesInDirectory = async (path: string): Promise<number> => {
-  let deletedSize = 0;
-  try {
-    const files = await getRealFiles(path);
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif'];
+const VIDEO_EXTS = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm', '3gp', 'm4v'];
+const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus'];
+const DOC_EXTS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json', 'xml', 'html'];
+const ARCHIVE_EXTS = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'];
 
-    for (const file of files) {
-      if (file.type === 'file') {
-        try {
-          const cleanPath = `${path}/${file.name}`.replace(/^\/+/, '');
-          await Filesystem.deleteFile({
-            path: cleanPath,
-            directory: Directory.ExternalStorage,
-          });
-          deletedSize += file.size;
-        } catch (e) {
-          console.log('Cannot delete:', file.name);
-        }
-      } else if (file.type === 'folder') {
-        deletedSize += await deleteFilesInDirectory(file.path);
-        try {
-          const cleanPath = file.path.replace(/^\/+/, '');
-          await Filesystem.rmdir({
-            path: cleanPath,
-            directory: Directory.ExternalStorage,
-          });
-        } catch (e) {
-          console.log('Cannot delete folder:', file.path);
+function categorizeFile(file: ScanFileInfo): string | null {
+  if (file.type !== 'file') return null;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  if (IMAGE_EXTS.includes(ext)) return 'image';
+  if (VIDEO_EXTS.includes(ext)) return 'video';
+  if (AUDIO_EXTS.includes(ext)) return 'audio';
+  if (DOC_EXTS.includes(ext)) return 'document';
+  if (ext === 'apk') return 'apk';
+  if (ARCHIVE_EXTS.includes(ext)) return 'archive';
+  return 'other';
+}
+
+export const scanFilesByCategory = async (): Promise<Record<string, CategoryFiles>> => {
+  const categories: Record<string, CategoryFiles> = {
+    image: { name: '图片', icon: 'image', files: [], totalSize: 0 },
+    video: { name: '视频', icon: 'video', files: [], totalSize: 0 },
+    audio: { name: '音乐', icon: 'audio', files: [], totalSize: 0 },
+    document: { name: '文档', icon: 'document', files: [], totalSize: 0 },
+    apk: { name: '应用', icon: 'apk', files: [], totalSize: 0 },
+    archive: { name: '压缩包', icon: 'archive', files: [], totalSize: 0 },
+    other: { name: '其他', icon: 'other', files: [], totalSize: 0 },
+  };
+
+  const scanDirs = ['', 'Pictures', 'DCIM', 'Download', 'Documents', 'Music', 'Movies', 'WhatsApp/Media'];
+
+  for (const dir of scanDirs) {
+    try {
+      const files = await getRealFiles(dir);
+      for (const file of files) {
+        if (file.type === 'file') {
+          const cat = categorizeFile(file);
+          if (cat && categories[cat]) {
+            categories[cat].files.push(file);
+            categories[cat].totalSize += file.size;
+          }
         }
       }
+    } catch {
+      // Directory doesn't exist or is inaccessible
     }
-  } catch (e) {
-    console.log('Cannot delete from:', path);
   }
-  return deletedSize;
+
+  return categories;
+};
+
+export const getStorageBreakdown = async (): Promise<{ name: string; value: number; color: string }[]> => {
+  try {
+    const categories = await scanFilesByCategory();
+    return [
+      { name: '图片', value: categories.image.totalSize, color: '#FF6B6B' },
+      { name: '视频', value: categories.video.totalSize, color: '#4ECDC4' },
+      { name: '音乐', value: categories.audio.totalSize, color: '#45B7D1' },
+      { name: '文档', value: categories.document.totalSize, color: '#96CEB4' },
+      { name: '应用', value: categories.apk.totalSize, color: '#45B7D1' },
+      { name: '压缩', value: categories.archive.totalSize, color: '#FFEAA7' },
+      { name: '其他', value: categories.other.totalSize, color: '#DFE6E9' },
+    ];
+  } catch {
+    return [];
+  }
 };
 
 export const scanLargeFiles = async (minSize: number = 100 * 1024 * 1024): Promise<ScanFileInfo[]> => {
   const largeFiles: ScanFileInfo[] = [];
   const scannedPaths = new Set<string>();
-  
+
   const scanDirectory = async (path: string) => {
     if (scannedPaths.has(path)) return;
     scannedPaths.add(path);
-    
+
     try {
       const files = await getRealFiles(path);
-      
       for (const file of files) {
         if (file.type === 'file' && file.size >= minSize) {
           largeFiles.push(file);
@@ -128,69 +143,11 @@ export const scanLargeFiles = async (minSize: number = 100 * 1024 * 1024): Promi
           await scanDirectory(file.path);
         }
       }
-    } catch (e) {
-      console.log('Cannot scan:', path);
+    } catch {
+      // Cannot scan
     }
   };
-  
+
   await scanDirectory('');
   return largeFiles.sort((a, b) => b.size - a.size).slice(0, 20);
-};
-
-export const getStorageBreakdown = async (): Promise<{ name: string; value: number; color: string }[]> => {
-  try {
-    const categories = {
-      images: { name: '图片', value: 0, color: '#FF6B6B', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'] },
-      videos: { name: '视频', value: 0, color: '#4ECDC4', extensions: ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'] },
-      audio: { name: '音乐', value: 0, color: '#45B7D1', extensions: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'] },
-      documents: { name: '文档', value: 0, color: '#96CEB4', extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'] },
-      apks: { name: '应用', value: 0, color: '#45B7D1', extensions: ['apk'] },
-      archives: { name: '压缩', value: 0, color: '#FFEAA7', extensions: ['zip', 'rar', '7z', 'tar', 'gz'] },
-      others: { name: '其他', value: 0, color: '#DFE6E9', extensions: [] },
-    };
-    
-    const scanDirs = ['/Pictures', '/DCIM', '/Download', '/Documents', '/Music', '/Movies', '/WhatsApp/Media'];
-    
-    for (const dir of scanDirs) {
-      try {
-        const files = await getRealFiles(dir.replace(/^\/+/, ''));
-        
-        for (const file of files) {
-          if (file.type === 'file') {
-            const ext = file.name.split('.').pop()?.toLowerCase() || '';
-            
-            if (categories.images.extensions.includes(ext)) {
-              categories.images.value += file.size;
-            } else if (categories.videos.extensions.includes(ext)) {
-              categories.videos.value += file.size;
-            } else if (categories.audio.extensions.includes(ext)) {
-              categories.audio.value += file.size;
-            } else if (categories.documents.extensions.includes(ext)) {
-              categories.documents.value += file.size;
-            } else if (categories.apks.extensions.includes(ext)) {
-              categories.apks.value += file.size;
-            } else if (categories.archives.extensions.includes(ext)) {
-              categories.archives.value += file.size;
-            } else {
-              categories.others.value += file.size;
-            }
-          }
-        }
-      } catch (e) {
-        console.log('Cannot scan dir:', dir);
-      }
-    }
-    
-    return [
-      { name: categories.images.name, value: categories.images.value, color: categories.images.color },
-      { name: categories.videos.name, value: categories.videos.value, color: categories.videos.color },
-      { name: categories.apks.name, value: categories.apks.value, color: categories.apks.color },
-      { name: categories.documents.name, value: categories.documents.value, color: categories.documents.color },
-      { name: categories.archives.name, value: categories.archives.value, color: categories.archives.color },
-      { name: categories.others.name, value: categories.others.value, color: categories.others.color },
-    ];
-  } catch (error) {
-    console.error('Error getting breakdown:', error);
-    return [];
-  }
 };
