@@ -130,6 +130,8 @@ export const useFileStore = create<FileStore>((set, get) => ({
     const { selectedFiles, files, currentPath } = get();
     const selectedFileItems = files.filter(f => selectedFiles.has(f.id));
 
+    if (!window.confirm('确定删除选中的文件？此操作不可恢复。')) return;
+
     for (const file of selectedFileItems) {
       await deleteFileOrFolder(currentPath, file.name, file.type);
     }

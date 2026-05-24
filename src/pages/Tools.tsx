@@ -44,6 +44,7 @@ const Tools = () => {
   const [cacheItems, setCacheItems] = useState<CacheItem[]>([]);
   const [isCleaning, setIsCleaning] = useState(false);
   const [cleaned, setCleaned] = useState(0);
+  const [totalCleaned, setTotalCleaned] = useState(0);
 
   const ensurePermission = async () => {
     if (!hasPermission) {
@@ -129,6 +130,7 @@ const Tools = () => {
     }
     setIsCleaning(true);
     setCleaned(0);
+    setTotalCleaned(0);
     const items = await scanCache();
     setCacheItems(items);
     setIsCleaning(false);
@@ -145,6 +147,7 @@ const Tools = () => {
     const ok = await deleteFileOrFolder(parentPath, name, 'file');
     if (ok) {
       setCleaned(c => c + item.size);
+      setTotalCleaned(c => c + item.size);
       setCacheItems(prev => prev.filter(i => i.path !== item.path));
     }
   };
@@ -191,7 +194,7 @@ const Tools = () => {
                 可清理文件 ({cacheItems.length} 项, {formatFileSize(totalCacheSize)})
               </h2>
               <button
-                onClick={() => { setCacheItems([]); setCleaned(0); }}
+                onClick={() => { setCacheItems([]); }}
                 className="text-xs text-gray-400 hover:text-gray-600"
               >
                 关闭
@@ -220,7 +223,16 @@ const Tools = () => {
           </div>
         ) : null}
 
-        <div className="mb-6">
+      {totalCleaned > 0 && cacheItems.length === 0 && (
+        <div className="mb-6 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
+          <div className="flex items-center gap-2">
+            <Trash2 size={18} className="text-green-500" />
+            <span className="text-sm font-medium text-green-700">本次已清理 {formatFileSize(totalCleaned)} 空间</span>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-6">
           <h2 className="text-sm font-semibold text-gray-600 mb-3 px-1">快速操作</h2>
           <div className="grid grid-cols-2 gap-3">
             <div

@@ -19,7 +19,7 @@ import {
   Folder,
   FileText,
 } from 'lucide-react';
-import { getRealFiles } from '../services/systemInfo';
+import { scanFilesByCategory } from '../services/systemInfo';
 import { formatFileSize } from '../utils/fileUtils';
 
 import { App } from '@capacitor/app';
@@ -33,31 +33,19 @@ const Me = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [permissionError, setPermissionError] = useState(false);
 
-  const scanDir = async (dir: string): Promise<{ count: number; size: number }> => {
-    try {
-      const files = await getRealFiles(dir);
-      const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
-      return { count: files.length, size: totalSize };
-    } catch {
-      return { count: 0, size: 0 };
-    }
-  };
-
   const loadStats = async () => {
     setIsLoading(true);
     try {
-      const dirs = ['Pictures', 'Download', 'Documents', 'Music', 'Movies'];
+      const categories = await scanFilesByCategory();
       let totalFiles = 0;
-      let totalFolders = 0;
       let totalSize = 0;
-
-      for (const dir of dirs) {
-        const result = await scanDir(dir);
-        totalFiles += result.count;
-        totalSize += result.size;
+      for (const cat of Object.values(categories)) {
+        totalFiles += cat.files.length;
+        totalSize += cat.totalSize;
       }
 
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      let totalFolders = 0;
       try {
         const root = await Filesystem.readdir({ path: '', directory: Directory.ExternalStorage });
         totalFolders = root.files.filter(f => f.type === 'directory').length;

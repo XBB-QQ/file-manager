@@ -26,6 +26,7 @@ import {
 import { formatFileSize } from '../utils/fileUtils';
 import { scanFilesByCategory, CategoryFiles, ScanFileInfo } from '../services/systemInfo';
 import { deleteFileOrFolder } from '../services/filesystem';
+import { Capacitor } from '@capacitor/core';
 
 const Categories = () => {
   const navigate = useNavigate();
@@ -67,33 +68,31 @@ const Categories = () => {
     setPreviewData('');
 
     try {
-      const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
-      const result = await Filesystem.readFile({ path: cleanPath, directory: Directory.ExternalStorage });
-      const data = (result.data as string) || '';
+      const relativePath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+      const absolutePath = `/storage/emulated/0/${relativePath}`;
+      const webUrl = Capacitor.convertFileSrc(absolutePath);
       const mime = getMimeFromExt(file.name);
 
       if (mime.startsWith('image/')) {
-        setPreviewData(`data:${mime};base64,${data}`);
+        setPreviewData(webUrl);
         setPreviewType('image');
       } else if (mime.startsWith('video/') || mime.startsWith('audio/')) {
-        try {
-          const binary = atob(data);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          setPreviewData(URL.createObjectURL(new Blob([bytes], { type: mime })));
-          setPreviewType('video');
-        } catch {
-          setPreviewType('info');
-        }
+        setPreviewData(webUrl);
+        setPreviewType('video');
       } else if (isTextFile(file.name)) {
         try {
+          const result = await Filesystem.readFile({
+            path: relativePath,
+            directory: Directory.ExternalStorage,
+          });
+          const data = (result.data as string) || '';
           const binary = atob(data);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           setPreviewData(new TextDecoder('utf-8').decode(bytes).substring(0, 50000));
           setPreviewType('text');
         } catch {
-          setPreviewData(data);
+          setPreviewData('无法读取文件内容');
           setPreviewType('text');
         }
       } else {
@@ -129,6 +128,7 @@ const Categories = () => {
   }, []);
 
   const handleDeleteFile = async (file: ScanFileInfo) => {
+    if (!window.confirm(`确定删除 "${file.name}"？`)) return;
     const parts = file.path.split('/');
     const name = parts.pop() || '';
     const parentPath = parts.join('/') || '/';
@@ -154,7 +154,6 @@ const Categories = () => {
 
   const handleBack = () => {
     setSelectedCategory(null);
-    loadCategories();
   };
 
   const categoryCards = [

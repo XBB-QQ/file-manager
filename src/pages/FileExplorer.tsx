@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFileStore } from '../store/useFileStore';
 import { createFolder, renameFileOrFolder, searchFiles } from '../services/filesystem';
+import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import {
   Menu,
@@ -34,6 +35,7 @@ import {
   X,
   Play,
   Info,
+  ArrowUpDown,
 } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileUtils';
@@ -65,6 +67,8 @@ const FileExplorer = () => {
     permissionError,
     hasPermission,
     requestPermissions,
+    sortBy,
+    setSortBy,
   } = useFileStore();
 
   const [showSidebar, setShowSidebar] = useState(false);
@@ -241,53 +245,39 @@ const FileExplorer = () => {
     setPreviewData('');
 
     try {
-      const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
-      const result = await Filesystem.readFile({
-        path: cleanPath,
-        directory: Directory.ExternalStorage,
-      });
-      const data = (result.data as string) || '';
+      const relativePath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+      const absolutePath = `/storage/emulated/0/${relativePath}`;
+      const webUrl = Capacitor.convertFileSrc(absolutePath);
 
       const mime = getMimeFromExt(file.name);
       if (mime.startsWith('image/')) {
-        setPreviewData(`data:${mime};base64,${data}`);
+        setPreviewData(webUrl);
         setPreviewType('image');
-      } else if (mime.startsWith('video/')) {
-        try {
-          const binary = atob(data);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const blob = new Blob([bytes], { type: mime });
-          setPreviewData(URL.createObjectURL(blob));
-          setPreviewType('video');
-        } catch {
-          setPreviewType('info');
-        }
-      } else if (mime.startsWith('audio/')) {
-        try {
-          const binary = atob(data);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const blob = new Blob([bytes], { type: mime });
-          setPreviewData(URL.createObjectURL(blob));
-          setPreviewType('video');
-        } catch {
-          setPreviewType('info');
-        }
+      } else if (mime.startsWith('video/') || mime.startsWith('audio/')) {
+        setPreviewData(webUrl);
+        setPreviewType('video');
       } else if (isTextFile(file.name)) {
         try {
-          const decoded = decodeURIComponent(escape(atob(data)));
-          setPreviewData(decoded.substring(0, 50000));
+          const result = await Filesystem.readFile({
+            path: relativePath,
+            directory: Directory.ExternalStorage,
+          });
+          const data = (result.data as string) || '';
+          const binary = atob(data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const decoded = new TextDecoder('utf-8').decode(bytes).substring(0, 50000);
+          setPreviewData(decoded);
           setPreviewType('text');
         } catch {
-          setPreviewData(data);
+          setPreviewData('无法读取文件内容');
           setPreviewType('text');
         }
       } else {
         setPreviewType('info');
       }
     } catch (e) {
-      console.error('Preview failed:', e);
+      console.error('Preview file read error:', e);
       setPreviewType('info');
     }
   };
@@ -371,6 +361,18 @@ const FileExplorer = () => {
                 title="刷新"
               >
                 <RefreshCw size={24} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+              <button
+                onClick={() => {
+                  if (sortBy === 'name') setSortBy('size');
+                  else if (sortBy === 'size') setSortBy('date');
+                  else setSortBy('name');
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full flex items-center gap-0.5"
+                title="排序"
+              >
+                <ArrowUpDown size={24} />
+                <span className="text-xs text-gray-500">{sortBy === 'name' ? '名称' : sortBy === 'size' ? '大小' : '日期'}</span>
               </button>
               <button
                 onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
@@ -562,23 +564,23 @@ const FileExplorer = () => {
                 <X size={24} />
               </button>
             </div>
-            <div className="flex-1 flex items-center justify-center overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex-1 flex items-center justify-center overflow-auto">
               {previewType === 'loading' && (
-                <Loader2 size={40} className="animate-spin text-white" />
+                <Loader2 size={40} className="animate-spin text-white" onClick={e => e.stopPropagation()} />
               )}
               {previewType === 'image' && previewData && (
-                <img src={previewData} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
+                <img src={previewData} alt={previewFile.name} className="max-w-full max-h-full object-contain" onClick={e => e.stopPropagation()} />
               )}
               {previewType === 'video' && previewData && (
-                <video src={previewData} controls autoPlay className="max-w-full max-h-full rounded-lg" />
+                <video src={previewData} controls autoPlay className="max-w-full max-h-full rounded-lg" onClick={e => e.stopPropagation()} />
               )}
               {previewType === 'text' && (
-                <div className="w-full max-w-2xl max-h-full overflow-auto bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                <div className="w-full max-w-2xl max-h-full overflow-auto bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm" onClick={e => e.stopPropagation()}>
                   <pre className="whitespace-pre-wrap break-all">{previewData || '(空文件)'}</pre>
                 </div>
               )}
               {previewType === 'info' && (
-                <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
+                <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
                   <div className="flex flex-col items-center text-center">
                     <FileText size={48} className="text-gray-400 mb-4" />
                     <h3 className="font-semibold text-gray-800 mb-2">{previewFile.name}</h3>
